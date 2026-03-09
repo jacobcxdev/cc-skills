@@ -54,24 +54,26 @@ escape_for_python() {
 
 # --- Parse arguments ---
 
-BINARY="${1:?Usage: hopper-analyze <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
-JOB_ID="$(uuidgen)"
 SAVE_PATH=""
 NO_SAVE=false
 VERSION=""
 DESCRIPTION=""
+POSITIONAL=()
 
-# Parse optional flags
-shift 1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version) VERSION="$2"; shift 2 ;;
         --description) DESCRIPTION="$2"; shift 2 ;;
         --save) SAVE_PATH="$2"; shift 2 ;;
         --no-save) NO_SAVE=true; shift ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        --) shift; POSITIONAL+=("$@"); break ;;
+        -*) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+BINARY="${POSITIONAL[0]:?Usage: hopper-analyze <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
+JOB_ID="$(uuidgen)"
 
 # Resolve binary to absolute path and verify existence
 BINARY="$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")"
