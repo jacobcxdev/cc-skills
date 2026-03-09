@@ -69,7 +69,8 @@ Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,
 
 ## Known limitations
 
-- **Single-instance only**: The script quits any running Hopper instance before launching to ensure clean XPC state. HopperMCPServer connects to Hopper via XPC, which breaks with multiple instances. Unsaved work in Hopper will trigger a save dialog.
+- **Single-instance XPC**: HopperMCPServer connects to Hopper via XPC, which breaks with multiple instances. If one instance is already running, the script reuses it (warm launch). If multiple instances are detected, all are quit first. Unsaved work triggers a save dialog.
+- **Warm launch**: When reusing an existing Hopper instance, the `-Y` notification script cannot fire (requires cold launch). The script exits immediately after opening the binary — poll `list_documents` via MCP to detect when analysis completes. Auto-save is unavailable on warm launch.
 - **FAT dialog bypass**: Without `-l FAT --aarch64 -l Mach-O` (or equivalent), Hopper shows a slice-picker dialog that blocks analysis. The script handles this automatically.
 - **No `open_document` in MCP**: Hopper MCP only queries already-opened documents. This skill bridges the gap by automating the CLI launch.
 - **Large binaries**: Analysis of large frameworks (e.g. UIKitCore at 72MB) can take several minutes. The sentinel fires only after analysis completes.

@@ -72,9 +72,9 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
             echo "Already analysed: $EXISTING"
             echo "Opening existing database..."
 
-            # Ensure single Hopper instance (same logic as fresh analysis)
-            if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
-                echo "Quitting existing Hopper instance(s) for clean XPC state..."
+            HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
+            if [[ "$HOPPER_COUNT" -gt 1 ]]; then
+                echo "Multiple Hopper instances detected — quitting all for clean XPC state..."
                 osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
                 for i in $(seq 1 20); do
                     pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
@@ -90,7 +90,6 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
             fi
 
             hopper -d "$EXISTING"
-            # Wait for Hopper to start and load the document
             sleep 3
             echo "Existing database opened. Query via Hopper MCP tools."
             exit 0
@@ -214,19 +213,18 @@ if doc:
 PYEOF
 fi
 
-# --- Clean previous sentinel ---
-rm -f "$SENTINEL"
+# --- Check existing Hopper instances ---
+HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
+WARM_LAUNCH=false
 
-# --- Ensure single Hopper instance (XPC routing breaks with multiple) ---
-if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
-    echo "Quitting existing Hopper instance(s) for clean XPC state..."
+if [[ "$HOPPER_COUNT" -gt 1 ]]; then
+    # Multiple instances — XPC routing breaks, must quit all
+    echo "Multiple Hopper instances detected ($HOPPER_COUNT) — quitting all for clean XPC state..."
     osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
-    # Wait for graceful exit (initial 10s)
     for i in $(seq 1 20); do
         pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
         sleep 0.5
     done
-    # If still running, a save dialog is likely open — wait for the user
     if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
         echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
         while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
@@ -234,34 +232,52 @@ if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
         done
     fi
     echo "Hopper quit."
+elif [[ "$HOPPER_COUNT" -eq 1 ]]; then
+    # Single instance already running — reuse it (warm launch)
+    WARM_LAUNCH=true
+    echo "Hopper already running — opening binary in existing instance."
 fi
 
-# --- Launch Hopper ---
+# --- Launch ---
 echo "Launching Hopper..."
 echo "  Binary:   $BINARY"
 echo "  Job ID:   $JOB_ID"
-echo "  Sentinel: $SENTINEL"
 if [[ -n "$SAVE_PATH" ]]; then
     echo "  Save to:  $SAVE_PATH"
 fi
 
-hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
-
-# --- Wait for analysis completion (timeout scales with binary size) ---
-BINARY_SIZE=$(stat -f%z "$BINARY")
-SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
-TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
-echo "Waiting for analysis to complete (timeout: ${TIMEOUT}s for ${SIZE_MB}MB)..."
-ELAPSED=0
-while [ ! -f "$SENTINEL" ]; do
-    sleep 2
-    ELAPSED=$((ELAPSED + 2))
-    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-        echo "Error: Analysis did not complete within ${TIMEOUT}s" >&2
-        exit 1
+if [[ "$WARM_LAUNCH" == true ]]; then
+    # Warm launch: open in existing instance — -Y requires cold launch, so skip sentinel.
+    # Loader flags still needed for FAT slice selection.
+    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY"
+    echo ""
+    echo "Binary opened in existing Hopper instance. Analysis is running."
+    echo "Poll Hopper MCP list_documents to check when the new document appears."
+    if [[ -n "$SAVE_PATH" ]]; then
+        echo "Auto-save unavailable on warm launch. Save manually or via MCP if needed."
     fi
-done
-rm -f "$SENTINEL" "$NOTIFY_SCRIPT"
+    rm -f "$NOTIFY_SCRIPT"
+else
+    # Cold launch: use -Y notification script + sentinel wait
+    rm -f "$SENTINEL"
+    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
-echo ""
-echo "Analysis complete. Query via Hopper MCP tools."
+    # --- Wait for analysis completion (timeout scales with binary size) ---
+    BINARY_SIZE=$(stat -f%z "$BINARY")
+    SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
+    TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
+    echo "Waiting for analysis to complete (timeout: ${TIMEOUT}s for ${SIZE_MB}MB)..."
+    ELAPSED=0
+    while [ ! -f "$SENTINEL" ]; do
+        sleep 2
+        ELAPSED=$((ELAPSED + 2))
+        if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+            echo "Error: Analysis did not complete within ${TIMEOUT}s" >&2
+            exit 1
+        fi
+    done
+    rm -f "$SENTINEL" "$NOTIFY_SCRIPT"
+
+    echo ""
+    echo "Analysis complete. Query via Hopper MCP tools."
+fi
