@@ -210,7 +210,7 @@ if [[ -n "$SAVE_PATH" ]]; then
     cat >> "$NOTIFY_SCRIPT" << PYEOF
 doc = Document.getCurrentDocument()
 if doc:
-    doc.saveHopperFile("${SAVE_PATH}")
+    doc.saveDocumentAt("${SAVE_PATH}")
 PYEOF
 fi
 
