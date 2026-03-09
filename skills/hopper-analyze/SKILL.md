@@ -19,7 +19,7 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 ### 1. Launch analysis
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
 ```
 
 Default save path:

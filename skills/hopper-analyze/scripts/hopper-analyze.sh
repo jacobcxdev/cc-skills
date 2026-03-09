@@ -2,7 +2,7 @@
 # hopper-analyze: Open a binary in Hopper Disassembler with auto-detected architecture,
 # run analysis, and signal completion via sentinel file.
 #
-# Usage: hopper-analyze <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+# Usage: hopper-analyze <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
 #
 # The script:
 #   1. Detects binary type (FAT/thin) and architecture via `file`/`lipo`
@@ -54,15 +54,15 @@ escape_for_python() {
 
 # --- Parse arguments ---
 
-BINARY="${1:?Usage: hopper-analyze <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
-JOB_ID="${2:-$(uuidgen)}"
+BINARY="${1:?Usage: hopper-analyze <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
+JOB_ID="$(uuidgen)"
 SAVE_PATH=""
 NO_SAVE=false
 VERSION=""
 DESCRIPTION=""
 
 # Parse optional flags
-shift 2 2>/dev/null || shift 1 2>/dev/null || true
+shift 1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version) VERSION="$2"; shift 2 ;;
