@@ -19,8 +19,10 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 ### 1. Launch analysis
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
 ```
+
+If the input path ends in `.hop`, the script opens it directly in Hopper (skipping architecture detection, deduplication, and analysis) and blocks until the document loads.
 
 Default save path:
 

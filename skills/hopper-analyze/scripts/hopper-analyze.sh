@@ -92,6 +92,73 @@ PYEOF
     fi
 }
 
+# Open a .hop file in Hopper and wait until it is fully loaded.
+# Two-phase detection: (1) window title appears, (2) CPU settles (deserialisation done).
+# Handles multi-instance quit. Args: <hop_path>
+open_hop_document() {
+    local hop_path="$1"
+    local hop_name hop_size hop_mb hop_timeout elapsed
+
+    echo "Opening: $hop_path"
+
+    HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
+    if [[ "$HOPPER_COUNT" -gt 1 ]]; then
+        echo "Multiple Hopper instances detected — quitting all for clean XPC state..."
+        quit_hopper
+    fi
+
+    hopper -d "$hop_path"
+
+    # -Y doesn't fire for -d (no analysis). Use two-phase readiness detection.
+    hop_size=$(stat -f%z "$hop_path")
+    hop_mb=$(( (hop_size + 1048575) / 1048576 ))
+    hop_timeout=$(( 60 + hop_mb * 2 ))  # 1 min base + 2s per MB
+    hop_name="$(basename "$hop_path")"
+    elapsed=0
+
+    # Phase 1: Poll System Events until window title appears
+    echo "Waiting for window to appear (timeout: ${hop_timeout}s)..."
+    while true; do
+        WIN_NAMES=$(osascript -e 'tell application "System Events" to tell process "Hopper Disassembler" to get name of every window' 2>/dev/null || echo "")
+        if echo "$WIN_NAMES" | grep -qF "$hop_name"; then
+            break
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+        if [ "$elapsed" -ge "$hop_timeout" ]; then
+            echo "Error: Window did not appear within ${hop_timeout}s" >&2
+            exit 1
+        fi
+    done
+
+    # Phase 2: Wait for CPU to settle (deserialisation complete)
+    # Window appears before loading finishes — poll CPU until idle for 3 consecutive checks.
+    echo "Window appeared — waiting for document to finish loading..."
+    local hopper_pid settle_count=0
+    hopper_pid=$(pgrep -x "Hopper Disassembler" | head -1)
+    if [[ -n "$hopper_pid" ]]; then
+        while [ "$settle_count" -lt 3 ]; do
+            sleep 2
+            elapsed=$((elapsed + 2))
+            if [ "$elapsed" -ge "$hop_timeout" ]; then
+                echo "Error: Document did not finish loading within ${hop_timeout}s" >&2
+                exit 1
+            fi
+            local cpu cpu_int
+            cpu=$(ps -p "$hopper_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+            cpu_int=${cpu%.*}  # truncate decimal
+            cpu_int=${cpu_int:-0}
+            if [ "$cpu_int" -lt 15 ]; then
+                settle_count=$((settle_count + 1))
+            else
+                settle_count=0
+            fi
+        done
+    fi
+
+    echo "Document loaded. Query via Hopper MCP tools."
+}
+
 # --- Parse arguments ---
 
 SAVE_PATH=""
@@ -112,7 +179,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BINARY="${POSITIONAL[0]:?Usage: hopper-analyze <binary-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
+BINARY="${POSITIONAL[0]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
 JOB_ID="$(uuidgen)"
 
 # Resolve binary to absolute path and verify existence
@@ -121,6 +188,16 @@ BINARY="$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")"
 if [[ ! -f "$BINARY" ]]; then
     echo "Error: Binary not found: $BINARY" >&2
     exit 1
+fi
+
+# --- Direct .hop file input ---
+if [[ "$BINARY" == *.hop ]]; then
+    if ! command -v hopper >/dev/null 2>&1; then
+        echo "Error: 'hopper' command not found. Install Hopper Disassembler and ensure its CLI is on PATH." >&2
+        exit 1
+    fi
+    open_hop_document "$BINARY"
+    exit 0
 fi
 
 # Pre-flight: ensure hopper CLI is available
@@ -155,37 +232,7 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
         EXISTING="$(find "$BIN_DIR" -name "*_${_BIN_HASH}.hop" -print -quit 2>/dev/null)"
         if [[ -n "$EXISTING" ]]; then
             echo "Already analysed: $EXISTING"
-            echo "Opening existing database..."
-
-            HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
-            if [[ "$HOPPER_COUNT" -gt 1 ]]; then
-                echo "Multiple Hopper instances detected — quitting all for clean XPC state..."
-                quit_hopper
-            fi
-
-            hopper -d "$EXISTING"
-
-            # -Y doesn't fire for -d (no analysis). Poll System Events window titles instead.
-            HOP_SIZE=$(stat -f%z "$EXISTING")
-            HOP_MB=$(( (HOP_SIZE + 1048575) / 1048576 ))
-            HOP_TIMEOUT=$(( 60 + HOP_MB * 2 ))  # 1 min base + 2s per MB
-            HOP_NAME="$(basename "$EXISTING")"
-            echo "Waiting for document to load (timeout: ${HOP_TIMEOUT}s)..."
-            elapsed=0
-            while true; do
-                WIN_NAMES=$(osascript -e 'tell application "System Events" to tell process "Hopper Disassembler" to get name of every window' 2>/dev/null || echo "")
-                if echo "$WIN_NAMES" | grep -qF "$HOP_NAME"; then
-                    break
-                fi
-                sleep 2
-                elapsed=$((elapsed + 2))
-                if [ "$elapsed" -ge "$HOP_TIMEOUT" ]; then
-                    echo "Error: Document did not load within ${HOP_TIMEOUT}s" >&2
-                    exit 1
-                fi
-            done
-
-            echo "Existing database opened. Query via Hopper MCP tools."
+            open_hop_document "$EXISTING"
             exit 0
         fi
     fi
