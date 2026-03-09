@@ -14,10 +14,12 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 
 ## Workflow
 
+**IMPORTANT:** Run the script for EVERY binary you want to open — it manages the full lifecycle (quit existing instance → open existing .hop or detect architecture → launch → analyse → save). Never skip the script or try to use Hopper MCP tools without running it first.
+
 ### 1. Launch analysis
 
 ```bash
-bash ~/.claude/skills/hopper-analyze/scripts/hopper-analyze.sh <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
 ```
 
 Default save path:
@@ -32,7 +34,7 @@ $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<
 - `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`). Auto-detected; omitted from filename if unrecognised.
 - `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, etc.). Auto-detected; omitted from filename if unrecognised.
 - `<hash>` — first 12 chars of the binary's SHA-256.
-- **Deduplication**: if a `.hop` matching the same hash exists anywhere under `<binary>/`, the script prints its path and exits.
+- **Deduplication**: if a `.hop` matching the same hash exists anywhere under `<binary>/`, the script opens it directly in Hopper (skipping analysis) and exits.
 
 Use `--save /path/to.hop` to override entirely, or `--no-save` to skip saving.
 

@@ -70,7 +70,29 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
         EXISTING="$(find "$BIN_DIR" -name "*_${_BIN_HASH}.hop" -print -quit 2>/dev/null)"
         if [[ -n "$EXISTING" ]]; then
             echo "Already analysed: $EXISTING"
-            echo "Skipping analysis. To re-analyse, delete the file first."
+            echo "Opening existing database..."
+
+            # Ensure single Hopper instance (same logic as fresh analysis)
+            if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
+                echo "Quitting existing Hopper instance(s) for clean XPC state..."
+                osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
+                for i in $(seq 1 20); do
+                    pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
+                    sleep 0.5
+                done
+                if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
+                    echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
+                    while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
+                        sleep 1
+                    done
+                fi
+                echo "Hopper quit."
+            fi
+
+            hopper -d "$EXISTING"
+            # Wait for Hopper to start and load the document
+            sleep 3
+            echo "Existing database opened. Query via Hopper MCP tools."
             exit 0
         fi
     fi
@@ -223,7 +245,7 @@ if [[ -n "$SAVE_PATH" ]]; then
     echo "  Save to:  $SAVE_PATH"
 fi
 
-hopper "${LOADER_FLAGS[@]}" -a -o -e "$BINARY" -Y "$NOTIFY_SCRIPT"
+hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
 # --- Wait for analysis completion (timeout scales with binary size) ---
 BINARY_SIZE=$(stat -f%z "$BINARY")
