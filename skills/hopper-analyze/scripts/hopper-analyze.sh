@@ -27,6 +27,33 @@
 
 set -euo pipefail
 
+# --- Helpers ---
+
+quit_hopper() {
+    osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
+    local i
+    for i in $(seq 1 20); do
+        pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
+        sleep 0.5
+    done
+    if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
+        echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
+        while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
+            sleep 1
+        done
+    fi
+    echo "Hopper quit."
+}
+
+escape_for_python() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
+}
+
+# --- Parse arguments ---
+
 BINARY="${1:?Usage: hopper-analyze <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
 JOB_ID="${2:-$(uuidgen)}"
 SAVE_PATH=""
@@ -54,8 +81,17 @@ if [[ ! -f "$BINARY" ]]; then
     exit 1
 fi
 
+# Pre-flight: ensure hopper CLI is available
+if ! command -v hopper >/dev/null 2>&1; then
+    echo "Error: 'hopper' command not found. Install Hopper Disassembler and ensure its CLI is on PATH." >&2
+    exit 1
+fi
+
 SENTINEL="/tmp/hopper-ready-${JOB_ID}"
 NOTIFY_SCRIPT="/tmp/hopper-notify-${JOB_ID}.py"
+
+# Cleanup on interruption
+trap 'rm -f "$SENTINEL" "$NOTIFY_SCRIPT"' INT TERM
 
 # --- Compute default save path (partial — finalised after arch detection) ---
 _NEEDS_FINALISE=false
@@ -75,18 +111,7 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
             HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
             if [[ "$HOPPER_COUNT" -gt 1 ]]; then
                 echo "Multiple Hopper instances detected — quitting all for clean XPC state..."
-                osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
-                for i in $(seq 1 20); do
-                    pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
-                    sleep 0.5
-                done
-                if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
-                    echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
-                    while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
-                        sleep 1
-                    done
-                fi
-                echo "Hopper quit."
+                quit_hopper
             fi
 
             hopper -d "$EXISTING"
@@ -199,17 +224,19 @@ if [[ "$_NEEDS_FINALISE" == true ]]; then
 fi
 
 # --- Generate per-job Python notify script ---
+_PY_SENTINEL="$(escape_for_python "$SENTINEL")"
 cat > "$NOTIFY_SCRIPT" << PYEOF
 import pathlib
-sentinel = pathlib.Path("${SENTINEL}")
+sentinel = pathlib.Path("${_PY_SENTINEL}")
 sentinel.write_text("done")
 PYEOF
 
 if [[ -n "$SAVE_PATH" ]]; then
+    _PY_SAVE="$(escape_for_python "$SAVE_PATH")"
     cat >> "$NOTIFY_SCRIPT" << PYEOF
 doc = Document.getCurrentDocument()
 if doc:
-    doc.saveDocumentAt("${SAVE_PATH}")
+    doc.saveDocumentAt("${_PY_SAVE}")
 PYEOF
 fi
 
@@ -220,18 +247,7 @@ WARM_LAUNCH=false
 if [[ "$HOPPER_COUNT" -gt 1 ]]; then
     # Multiple instances — XPC routing breaks, must quit all
     echo "Multiple Hopper instances detected ($HOPPER_COUNT) — quitting all for clean XPC state..."
-    osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
-    for i in $(seq 1 20); do
-        pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
-        sleep 0.5
-    done
-    if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
-        echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
-        while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
-            sleep 1
-        done
-    fi
-    echo "Hopper quit."
+    quit_hopper
 elif [[ "$HOPPER_COUNT" -eq 1 ]]; then
     # Single instance already running — reuse it (warm launch)
     WARM_LAUNCH=true
@@ -249,7 +265,7 @@ fi
 if [[ "$WARM_LAUNCH" == true ]]; then
     # Warm launch: open in existing instance — -Y requires cold launch, so skip sentinel.
     # Loader flags still needed for FAT slice selection.
-    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY"
+    hopper ${LOADER_FLAGS[@]+"${LOADER_FLAGS[@]}"} -a -e "$BINARY"
     echo ""
     echo "Binary opened in existing Hopper instance. Analysis is running."
     echo "Poll Hopper MCP list_documents to check when the new document appears."
@@ -260,7 +276,7 @@ if [[ "$WARM_LAUNCH" == true ]]; then
 else
     # Cold launch: use -Y notification script + sentinel wait
     rm -f "$SENTINEL"
-    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
+    hopper ${LOADER_FLAGS[@]+"${LOADER_FLAGS[@]}"} -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
     # --- Wait for analysis completion (timeout scales with binary size) ---
     BINARY_SIZE=$(stat -f%z "$BINARY")
