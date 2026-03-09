@@ -9,18 +9,21 @@
 #   2. Builds correct Hopper CLI flags
 #   3. Generates a per-job Python notify script
 #   4. Launches Hopper with analysis + ObjC metadata + notification
-#   5. Prints sentinel path for the caller to wait on
+#   5. Waits for sentinel (cold launch) or exits immediately (warm launch)
+#
+# Configuration:
+#   HOPPER_ANALYZE_DIR env var sets the base save directory.
+#   Falls back to ~/.config/hopper-analyze/config (shell-sourceable), then /tmp/hopper.
 #
 # Default save path:
 #   $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>_<description>_<hash>.hop
-#   HOPPER_ANALYZE_DIR defaults to /tmp/hopper if unset.
 #   <version> groups by release/build (--version, falls back to <hash>).
 #   <loader> is the binary format (Mach-O, FAT, ELF, WinPE) — auto-detected.
 #   <cpu> is the CPU architecture (aarch64, x86_64, etc.) — auto-detected.
 #   <hash> is a short SHA-256 of the binary (12 chars).
 #   <description> is a human-readable label (--description, optional).
-#   Deduplication: if a file matching *-<hash>.hop already exists
-#   anywhere under <binary>/, the script prints its path and exits.
+#   Deduplication: if a file matching *_<hash>.hop already exists
+#   anywhere under <binary>/, the script opens it and waits for load.
 #
 # Sentinel: /tmp/hopper-ready-<job-id>
 # When the sentinel appears, Hopper MCP tools can query the document.
@@ -50,6 +53,43 @@ escape_for_python() {
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
     printf '%s' "$s"
+}
+
+# Wait for sentinel file with timeout. Args: <sentinel> <timeout_seconds> <label>
+wait_for_sentinel() {
+    local sentinel="$1" timeout="$2" label="$3"
+    echo "Waiting for ${label} (timeout: ${timeout}s)..."
+    local elapsed=0
+    while [ ! -f "$sentinel" ]; do
+        sleep 2
+        elapsed=$((elapsed + 2))
+        if [ "$elapsed" -ge "$timeout" ]; then
+            echo "Error: ${label} did not complete within ${timeout}s" >&2
+            exit 1
+        fi
+    done
+}
+
+# Generate a Python notify script that writes a sentinel file.
+# Args: <notify_script_path> <sentinel_path> [save_path]
+generate_notify_script() {
+    local script="$1" sentinel="$2" save_path="${3:-}"
+    local py_sentinel
+    py_sentinel="$(escape_for_python "$sentinel")"
+    cat > "$script" << PYEOF
+import pathlib
+sentinel = pathlib.Path("${py_sentinel}")
+sentinel.write_text("done")
+PYEOF
+    if [[ -n "$save_path" ]]; then
+        local py_save
+        py_save="$(escape_for_python "$save_path")"
+        cat >> "$script" << PYEOF
+doc = Document.getCurrentDocument()
+if doc:
+    doc.saveDocumentAt("${py_save}")
+PYEOF
+    fi
 }
 
 # --- Parse arguments ---
@@ -95,6 +135,13 @@ NOTIFY_SCRIPT="/tmp/hopper-notify-${JOB_ID}.py"
 # Cleanup on interruption
 trap 'rm -f "$SENTINEL" "$NOTIFY_SCRIPT"' INT TERM
 
+# --- Resolve HOPPER_ANALYZE_DIR ---
+_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hopper-analyze/config"
+if [[ -z "${HOPPER_ANALYZE_DIR:-}" && -f "$_CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$_CONFIG_FILE"
+fi
+
 # --- Compute default save path (partial — finalised after arch detection) ---
 _NEEDS_FINALISE=false
 if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
@@ -117,7 +164,27 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
             fi
 
             hopper -d "$EXISTING"
-            sleep 3
+
+            # -Y doesn't fire for -d (no analysis). Poll System Events window titles instead.
+            HOP_SIZE=$(stat -f%z "$EXISTING")
+            HOP_MB=$(( (HOP_SIZE + 1048575) / 1048576 ))
+            HOP_TIMEOUT=$(( 60 + HOP_MB * 2 ))  # 1 min base + 2s per MB
+            HOP_NAME="$(basename "$EXISTING")"
+            echo "Waiting for document to load (timeout: ${HOP_TIMEOUT}s)..."
+            elapsed=0
+            while true; do
+                WIN_NAMES=$(osascript -e 'tell application "System Events" to tell process "Hopper Disassembler" to get name of every window' 2>/dev/null || echo "")
+                if echo "$WIN_NAMES" | grep -qF "$HOP_NAME"; then
+                    break
+                fi
+                sleep 2
+                elapsed=$((elapsed + 2))
+                if [ "$elapsed" -ge "$HOP_TIMEOUT" ]; then
+                    echo "Error: Document did not load within ${HOP_TIMEOUT}s" >&2
+                    exit 1
+                fi
+            done
+
             echo "Existing database opened. Query via Hopper MCP tools."
             exit 0
         fi
@@ -226,21 +293,7 @@ if [[ "$_NEEDS_FINALISE" == true ]]; then
 fi
 
 # --- Generate per-job Python notify script ---
-_PY_SENTINEL="$(escape_for_python "$SENTINEL")"
-cat > "$NOTIFY_SCRIPT" << PYEOF
-import pathlib
-sentinel = pathlib.Path("${_PY_SENTINEL}")
-sentinel.write_text("done")
-PYEOF
-
-if [[ -n "$SAVE_PATH" ]]; then
-    _PY_SAVE="$(escape_for_python "$SAVE_PATH")"
-    cat >> "$NOTIFY_SCRIPT" << PYEOF
-doc = Document.getCurrentDocument()
-if doc:
-    doc.saveDocumentAt("${_PY_SAVE}")
-PYEOF
-fi
+generate_notify_script "$NOTIFY_SCRIPT" "$SENTINEL" "$SAVE_PATH"
 
 # --- Check existing Hopper instances ---
 HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
@@ -280,20 +333,11 @@ else
     rm -f "$SENTINEL"
     hopper ${LOADER_FLAGS[@]+"${LOADER_FLAGS[@]}"} -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
-    # --- Wait for analysis completion (timeout scales with binary size) ---
+    # Timeout scales with binary size
     BINARY_SIZE=$(stat -f%z "$BINARY")
     SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
     TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
-    echo "Waiting for analysis to complete (timeout: ${TIMEOUT}s for ${SIZE_MB}MB)..."
-    ELAPSED=0
-    while [ ! -f "$SENTINEL" ]; do
-        sleep 2
-        ELAPSED=$((ELAPSED + 2))
-        if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-            echo "Error: Analysis did not complete within ${TIMEOUT}s" >&2
-            exit 1
-        fi
-    done
+    wait_for_sentinel "$SENTINEL" "$TIMEOUT" "analysis (${SIZE_MB}MB)"
     rm -f "$SENTINEL" "$NOTIFY_SCRIPT"
 
     echo ""

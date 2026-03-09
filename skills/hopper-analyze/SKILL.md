@@ -28,13 +28,17 @@ Default save path:
 $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<hash>.hop
 ```
 
-- `HOPPER_ANALYZE_DIR` — user-defined base directory (e.g. `export HOPPER_ANALYZE_DIR=~/Developer/misc/hopper` in `.zshrc`). Defaults to `/tmp/hopper`.
+- `HOPPER_ANALYZE_DIR` — base save directory. Resolved in order: env var → `~/.config/hopper-analyze/config` → `/tmp/hopper`. To persist, create the config file:
+  ```bash
+  mkdir -p ~/.config/hopper-analyze
+  echo 'HOPPER_ANALYZE_DIR="$HOME/Developer/misc/hopper"' > ~/.config/hopper-analyze/config
+  ```
 - `--version <ver>` — groups databases by OS/SDK build tag. Falls back to `<hash>` if omitted.
 - `--description <desc>` — human-readable context distinguishing this binary from others with the same version. Optional.
 - `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`). Auto-detected; omitted from filename if unrecognised.
 - `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, etc.). Auto-detected; omitted from filename if unrecognised.
 - `<hash>` — first 12 chars of the binary's SHA-256.
-- **Deduplication**: if a `.hop` matching the same hash exists anywhere under `<binary>/`, the script opens it directly in Hopper (skipping analysis) and exits.
+- **Deduplication**: if a `.hop` matching the same hash exists anywhere under `<binary>/`, the script opens it directly in Hopper (skipping analysis) and blocks until the document loads (timeout: 1 min base + 2s/MB of .hop file).
 
 Use `--save /path/to.hop` to override entirely, or `--no-save` to skip saving.
 
