@@ -28,7 +28,7 @@
 set -euo pipefail
 
 BINARY="${1:?Usage: hopper-analyze <binary-path> [job-id] [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
-JOB_ID="${2:-$(date +%s)}"
+JOB_ID="${2:-$(uuidgen)}"
 SAVE_PATH=""
 NO_SAVE=false
 VERSION=""
