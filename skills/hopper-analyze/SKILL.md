@@ -62,9 +62,16 @@ The script auto-detects binary format and architecture via `file`/`lipo`, builds
 
 ### 2. Query via Hopper MCP
 
-The script blocks until analysis completes (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion.
+The script blocks until analysis completes (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion. **Do not set a `timeout` parameter on the Bash call** — the script manages its own timeout internally.
 
 Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`. If ToolSearch returns no Hopper MCP tools, **stop and ask the user to reconnect the Hopper MCP server** — do not fall back to other tools or attempt to read Hopper data by other means. Then:
+
+**If MCP tools are present but calls fail** (e.g. XPC connection closed or similar transport error), recover as follows:
+1. Quit all Hopper instances using `osascript -e 'tell application "Hopper Disassembler v4" to quit'`
+2. Tell the user to reconnect the MCP server by running `/mcp` in Claude Code
+3. Once they confirm reconnection, relaunch by running the script again from step 1
+
+Do not attempt to query Hopper MCP after an XPC failure without completing all three steps. Never work around Hopper failures using other tools — always fix the Hopper/MCP connection and retry unless the user explicitly asks for an alternative.
 
 - `list_documents` — verify the document appeared
 - `search_procedures` — find procedures by regex
