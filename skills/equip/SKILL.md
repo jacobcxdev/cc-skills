@@ -18,15 +18,15 @@ Load the right guidance for the right work. Detect → Infer → Load → Go.
 
 Run the detection script to capture raw project signals:
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/detect-context.sh
+```zsh
+zsh ${CLAUDE_SKILL_DIR}/scripts/detect-context.zsh
 ```
 
 Save the JSON output mentally. Present the `observations` array to the user as a brief environment summary.
 
 ### Step 2: Check for prior equip state
 
-If `detect-context.sh` reports `"equip_prior": true`, read the prior state:
+If `detect-context.zsh` reports `"equip_prior": true`, read the prior state:
 
 ```
 Read .omc/state/equip-session.json
@@ -36,8 +36,8 @@ Read .omc/state/equip-session.json
 
 Run the plan script to get hash and branch classification:
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/plan-equip.sh /dev/stdin [prior-state-path]
+```zsh
+zsh ${CLAUDE_SKILL_DIR}/scripts/plan-equip.zsh /dev/stdin [prior-state-path]
 ```
 
 Pipe the detect output as stdin. Pass the prior state file path as the second argument if it exists.
@@ -154,7 +154,7 @@ Ensure the directory exists (`mkdir -p .omc/state`), then write the equipped sta
 ```json
 {
   "equipped_at": "<ISO timestamp>",
-  "detect_hash": "<from plan-equip.sh output>",
+  "detect_hash": "<from plan-equip.zsh output>",
   "base_packs": ["<selected>"],
   "task_pack": "<selected>",
   "situation_packs": ["<selected>"],
@@ -178,8 +178,8 @@ Only after initial equip (not on `resume_keep`):
 ## Re-invocation
 
 When `/equip` is called again mid-session:
-1. Run `detect-context.sh` again (environment may have changed)
-2. Run `plan-equip.sh` with the new detect output AND prior state file
+1. Run `detect-context.zsh` again (environment may have changed)
+2. Run `plan-equip.zsh` with the new detect output AND prior state file
 3. If `hash_changed` is false → `resume_keep`
 4. If base packs match but task intent changed → `re_equip` (swap task layer only)
 5. If base changed → full `auto_equip` or `ask` flow

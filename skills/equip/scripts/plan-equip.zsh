@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
-# plan-equip.sh — Thin signal enhancer for equip routing.
+#!/usr/bin/env zsh
+# plan-equip.zsh — Thin signal enhancer for equip routing.
 # Claude does the heavy lifting (intent scoring, pack selection, evidence synthesis).
-# This script handles what bash is better at: hashing, file stats, prior state comparison.
+# This script handles what zsh is better at: hashing, file stats, prior state comparison.
 #
-# Usage: plan-equip.sh <detect-output.json> [prior-state.json]
+# Usage: plan-equip.zsh <detect-output.json> [prior-state.json]
 # Output: JSON with hash, branch classification, and prior state delta.
 set -euo pipefail
 

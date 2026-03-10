@@ -18,8 +18,8 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 
 ### 1. Launch analysis
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.sh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+```zsh
+zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
 ```
 
 If the input path ends in `.hop`, the script opens it directly in Hopper (skipping architecture detection, deduplication, and analysis) and blocks until the document loads.
@@ -64,7 +64,7 @@ The script auto-detects binary format and architecture via `file`/`lipo`, builds
 
 The script blocks until analysis completes (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion.
 
-Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`, then:
+Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`. If ToolSearch returns no Hopper MCP tools, **stop and ask the user to reconnect the Hopper MCP server** — do not fall back to other tools or attempt to read Hopper data by other means. Then:
 
 - `list_documents` — verify the document appeared
 - `search_procedures` — find procedures by regex

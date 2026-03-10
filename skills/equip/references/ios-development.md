@@ -22,8 +22,8 @@ When working on iOS/Swift projects. Detection signals:
 | Priority | Tool/Skill | Purpose | When to Reach For It |
 |----------|-----------|---------|---------------------|
 | 1 | **XcodeBuildMCP** | Build, run, test, simulator ops | Always prefer over shell `xcodebuild` commands |
-| 2 | **Axiom router skills** | Domain-specific iOS guidance | Architecture, patterns, debugging by domain |
-| 3 | **PFW skills** | Point-Free library guidance | When project uses TCA, Dependencies, etc. |
+| 2 | **PFW skills** | Point-Free library guidance | When project uses TCA, Dependencies, etc. |
+| 3 | **Axiom router skills** | Domain-specific iOS guidance | Architecture, patterns, debugging by domain |
 | 4 | **Standalone Swift skills** | Language-level expertise | Concurrency, SwiftUI layout, Swift Testing |
 | 5 | **ECC Swift skills** | Pattern libraries | Reference patterns for specific domains |
 | 6 | **Sosumi MCP** | Apple documentation | API lookup, WWDC transcripts, external docs |
@@ -99,6 +99,24 @@ Use **`session_use_defaults_profile`** to switch between saved profiles (e.g., "
 
 ---
 
+### PFW (Point-Free World) Skills
+
+Use when the project depends on Point-Free libraries. Check `Package.swift` or `Podfile` for these dependencies.
+
+| Skill | Library | When to Use |
+|-------|---------|-------------|
+| `composable-architecture` | swift-composable-architecture (TCA) | Reducer composition, effects, store scoping, testing reducers |
+| `dependencies` | swift-dependencies | Dependency injection, `@Dependency` usage, live/test/preview values |
+| `swift-navigation` | swift-navigation | Navigation patterns (tree-based, stack-based), deep linking |
+| `perception` | swift-perception | `@Perceptible` macro, backporting Observation to pre-iOS 17 |
+| `observable-models` | -- | Combining Observation with TCA stores |
+| `snapshot-testing` | swift-snapshot-testing | Snapshot test strategies, image/text/custom format assertions |
+| `case-paths` | swift-case-paths | Enum case extraction, `@CasePathable`, pattern matching |
+
+**Detection:** look for `import ComposableArchitecture`, `@Reducer`, `Store<`, `TestStore`, `@Dependency`, `@CasePathable` in Swift source files.
+
+---
+
 ### Axiom Router Skills
 
 Axiom provides domain-specific iOS guidance via router skills. Invoke with `/axiom:<skill-name>` or via the axiom-apple-docs skill.
@@ -115,24 +133,6 @@ Axiom provides domain-specific iOS guidance via router skills. Invoke with `/axi
 | `ios-vision` | Camera, ARKit, Vision | Camera pipelines, AR experiences, image/video processing |
 
 **Selection heuristic:** match the *domain* of the problem, not the symptom. A SwiftUI view that's slow? Start with `ios-ui` for the layout fix, escalate to `ios-performance` only if profiling is needed.
-
----
-
-### PFW (Point-Free World) Skills
-
-Use when the project depends on Point-Free libraries. Check `Package.swift` or `Podfile` for these dependencies.
-
-| Skill | Library | When to Use |
-|-------|---------|-------------|
-| `composable-architecture` | swift-composable-architecture (TCA) | Reducer composition, effects, store scoping, testing reducers |
-| `dependencies` | swift-dependencies | Dependency injection, `@Dependency` usage, live/test/preview values |
-| `swift-navigation` | swift-navigation | Navigation patterns (tree-based, stack-based), deep linking |
-| `perception` | swift-perception | `@Perceptible` macro, backporting Observation to pre-iOS 17 |
-| `observable-models` | -- | Combining Observation with TCA stores |
-| `snapshot-testing` | swift-snapshot-testing | Snapshot test strategies, image/text/custom format assertions |
-| `case-paths` | swift-case-paths | Enum case extraction, `@CasePathable`, pattern matching |
-
-**Detection:** look for `import ComposableArchitecture`, `@Reducer`, `Store<`, `TestStore`, `@Dependency`, `@CasePathable` in Swift source files.
 
 ---
 
@@ -206,11 +206,12 @@ Debug UI:         snapshot_ui (accessibility tree), screenshot (visual)
 Debug logs:       launch_app_logs_sim or start_sim_log_cap / stop_sim_log_cap
 
 Skill selection:
+  Using TCA?              → composable-architecture (PFW)
+  PFW dependency?         → check PFW skills first, then Axiom
   Build broken?           → ios-build (Axiom) + build_sim (XcodeBuildMCP)
   SwiftUI layout wrong?   → ios-ui (Axiom) + swiftui-expert
   Data layer question?    → ios-data (Axiom) + sosumi (for API docs)
   Concurrency warning?    → ios-concurrency (Axiom) + swift-concurrency
-  Using TCA?              → composable-architecture (PFW)
   Need Apple API docs?    → sosumi: search → fetch
   Need WWDC session?      → sosumi: fetchAppleVideoTranscript
 ```

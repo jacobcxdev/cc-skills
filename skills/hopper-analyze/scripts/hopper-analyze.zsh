@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 # hopper-analyze: Open a binary in Hopper Disassembler with auto-detected architecture,
 # run analysis, and signal completion via sentinel file.
 #
@@ -35,7 +35,7 @@ set -euo pipefail
 quit_hopper() {
     osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
     local i
-    for i in $(seq 1 20); do
+    for i in {1..20}; do
         pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
         sleep 0.5
     done
@@ -179,7 +179,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BINARY="${POSITIONAL[0]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
+BINARY="${POSITIONAL[1]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
 JOB_ID="$(uuidgen)"
 
 # Resolve binary to absolute path and verify existence
@@ -367,7 +367,7 @@ fi
 if [[ "$WARM_LAUNCH" == true ]]; then
     # Warm launch: open in existing instance — -Y requires cold launch, so skip sentinel.
     # Loader flags still needed for FAT slice selection.
-    hopper ${LOADER_FLAGS[@]+"${LOADER_FLAGS[@]}"} -a -e "$BINARY"
+    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY"
     echo ""
     echo "Binary opened in existing Hopper instance. Analysis is running."
     echo "Poll Hopper MCP list_documents to check when the new document appears."
@@ -378,7 +378,7 @@ if [[ "$WARM_LAUNCH" == true ]]; then
 else
     # Cold launch: use -Y notification script + sentinel wait
     rm -f "$SENTINEL"
-    hopper ${LOADER_FLAGS[@]+"${LOADER_FLAGS[@]}"} -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
+    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
     # Timeout scales with binary size
     BINARY_SIZE=$(stat -f%z "$BINARY")

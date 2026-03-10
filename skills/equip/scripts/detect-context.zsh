@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-# detect-context.sh — Analyse current working directory and output structured JSON.
+#!/usr/bin/env zsh
+# detect-context.zsh — Analyse current working directory and output structured JSON.
 # Collects raw environment signals. No decisions — Claude interprets these.
 # Dependencies: git, rg (ripgrep). No jq. Must complete in <1s.
 set -euo pipefail
@@ -15,9 +15,12 @@ json_arr() {
   for item in "$@"; do
     [ -z "$item" ] && continue
     $first && first=false || out+=","
-    # Escape quotes and backslashes
+    # Escape backslashes, quotes, and control characters
     item="${item//\\/\\\\}"
     item="${item//\"/\\\"}"
+    item="${item//$'\n'/\\n}"
+    item="${item//$'\t'/\\t}"
+    item="${item//$'\r'/\\r}"
     out+="\"$item\""
   done
   printf '%s]' "$out"
@@ -80,7 +83,33 @@ rg -q 'flask'   pyproject.toml requirements.txt setup.py 2>/dev/null && framewor
 # Go
 rg -q 'gin-gonic' go.mod 2>/dev/null && frameworks+=(gin)
 # Rust
-rg -q 'actix-web\|axum\|rocket' Cargo.toml 2>/dev/null && frameworks+=(rust-web)
+rg -q 'actix-web|axum|rocket' Cargo.toml 2>/dev/null && frameworks+=(rust-web)
+# PFW (Point-Free)
+pfw_pkgs=()
+if [[ " ${langs[*]:-} " =~ " swift " ]] && [ -f Package.swift ]; then
+  if rg -q 'pointfreeco' Package.swift 2>/dev/null; then
+    frameworks+=(pfw)
+    local _pfw_map=(
+      'swift-composable-architecture:composable-architecture'
+      'swift-dependencies:dependencies'
+      'swift-case-paths:case-paths'
+      'swift-perception:perception'
+      'swift-sharing:sharing'
+      'swift-snapshot-testing:snapshot-testing'
+      'swift-custom-dump:custom-dump'
+      'swift-identified-collections:identified-collections'
+      'swift-issue-reporting:issue-reporting'
+      'swift-macro-testing:macro-testing'
+      'swift-navigation:swift-navigation'
+      'sqlite-data:sqlite-data'
+      'swift-structured-queries:structured-queries'
+    )
+    for entry in "${_pfw_map[@]}"; do
+      local pkg="${entry%%:*}" skill="${entry##*:}"
+      rg -q "$pkg" Package.swift 2>/dev/null && pfw_pkgs+=("$skill")
+    done
+  fi
+fi
 
 # --- Platforms ---
 platforms=()
@@ -124,7 +153,9 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     untracked_count="$(echo "$porcelain" | rg -c '^\?\?' 2>/dev/null || echo 0)"
 
     # Dirty file list
-    mapfile -t df < <(echo "$porcelain" | cut -c4- | head -20)
+    local _df_out="$(echo "$porcelain" | cut -c4- | head -20)"
+    df=()
+    [[ -n "$_df_out" ]] && df=("${(@f)_df_out}")
     dirty_files_json="$(json_arr "${df[@]}")"
   fi
 
@@ -138,17 +169,23 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   { [ -d "$gd/rebase-merge" ] || [ -d "$gd/rebase-apply" ]; } && rebase_in_progress=true
 
   # Recent files (last 3 commits)
-  mapfile -t rf < <(git diff --name-only HEAD~3 2>/dev/null | head -20 || true)
+  local _rf_out="$(git diff --name-only HEAD~3 2>/dev/null | head -20 || true)"
+  rf=()
+  [[ -n "$_rf_out" ]] && rf=("${(@f)_rf_out}")
   [ ${#rf[@]} -gt 0 ] && recent_files_json="$(json_arr "${rf[@]}")"
 
   # Hot directories
   if [ ${#rf[@]} -gt 0 ]; then
-    mapfile -t hd < <(printf '%s\n' "${rf[@]}" | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -5 | awk '{print $2}')
+    local _hd_out="$(printf '%s\n' "${rf[@]}" | grep '/' | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -5 | awk '{print $2}')"
+    hd=()
+    [[ -n "$_hd_out" ]] && hd=("${(@f)_hd_out}")
     [ ${#hd[@]} -gt 0 ] && hot_dirs_json="$(json_arr "${hd[@]}")"
   fi
 
   # Recent commit subjects
-  mapfile -t rc < <(git log --oneline -5 --format='%s' 2>/dev/null || true)
+  local _rc_out="$(git log --oneline -5 --format='%s' 2>/dev/null || true)"
+  rc=()
+  [[ -n "$_rc_out" ]] && rc=("${(@f)_rc_out}")
   [ ${#rc[@]} -gt 0 ] && recent_commits_json="$(json_arr "${rc[@]}")"
 fi
 
@@ -159,7 +196,7 @@ equip_prior=false;   [ -f .omc/state/equip-session.json ] && equip_prior=true
 
 omc_state="null"
 if [ -d .omc/state ]; then
-  am="$(rg -l '"active":\s*true' .omc/state/*.json 2>/dev/null | head -1 | sed 's|.*/||;s|-state\.json||' || true)"
+  am="$(rg -l '"active":\s*true' .omc/state/*.json(N) 2>/dev/null | head -1 | sed 's|.*/||;s|-state\.json||' || true)"
   [ -n "$am" ] && omc_state="\"$am\""
 fi
 
@@ -232,6 +269,7 @@ if [ "$is_repo" = true ]; then
     [ "$ac" -gt 0 ] && obs+=("Recent commits are feature-focused ($ac of last ${#rc[@]})")
   fi
 fi
+[ ${#pfw_pkgs[@]} -gt 0 ]       && obs+=("PFW packages: ${(j:, :)pfw_pkgs}")
 [ "$gsd_active" = true ]        && obs+=("GSD project active")
 [ "$has_test_artifacts" = true ] && obs+=("Test artifacts present")
 [ "$large_diff" = true ]        && obs+=("Large uncommitted diff")
@@ -244,7 +282,8 @@ cat <<ENDJSON
     "languages": $(json_arr "${langs[@]}"),
     "frameworks": $(json_arr "${frameworks[@]}"),
     "platforms": $(json_arr "${platforms[@]}"),
-    "workflow_tools": $(json_arr "${wf_tools[@]}")
+    "workflow_tools": $(json_arr "${wf_tools[@]}"),
+    "pfw_packages": $(json_arr "${pfw_pkgs[@]}")
   },
   "git": {
     "is_repo": $is_repo,
