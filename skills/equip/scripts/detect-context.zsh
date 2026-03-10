@@ -49,11 +49,13 @@ has_file '*.jsx'    && [[ ! " ${langs[*]:-} " =~ " javascript " ]] && langs+=(ja
 has_file '*.rs'     && langs+=(rust)
 has_file '*.java'   && langs+=(java)
 has_file '*.cpp' || has_file '*.cc' && langs+=(cpp)
-has_file '*.c' 1    && langs+=(c)  # depth 1 only to avoid false positives
+has_file '*.c' 2    && langs+=(c)
+has_file '*.m' 3    && langs+=(objc)
 
 # --- Frameworks ---
 frameworks=()
-has_file '*.xcodeproj' 2 || has_file '*.xcworkspace' 2 && frameworks+=(xcode)
+local _xcode_dirs=(*.xcodeproj(N/) *.xcworkspace(N/) */*.xcodeproj(N/) */*.xcworkspace(N/))
+[ ${#_xcode_dirs[@]} -gt 0 ] && frameworks+=(xcode)
 [ -f Package.swift ] && {
   rg -q 'SwiftUI'   Package.swift 2>/dev/null && frameworks+=(swiftui)
   rg -q 'UIKit'     Package.swift 2>/dev/null && frameworks+=(uikit)
@@ -234,9 +236,11 @@ if [[ " ${frameworks[*]:-} " =~ " xcode " ]]; then
   for f in swiftui uikit combine swiftdata; do
     [[ " ${frameworks[*]:-} " =~ " $f " ]] && fw_parts+=("$f")
   done
-  [ ${#fw_parts[@]} -gt 0 ] && o="$o with $(IFS=', '; echo "${fw_parts[*]}")"
-  [ ${#platforms[@]} -gt 0 ] && o="$o targeting $(IFS=', '; echo "${platforms[*]}")"
+  [ ${#fw_parts[@]} -gt 0 ] && o="$o with ${(j:, :)fw_parts}"
+  [ ${#platforms[@]} -gt 0 ] && o="$o targeting ${(j:, :)platforms}"
   obs+=("$o")
+elif [[ " ${langs[*]:-} " =~ " go " ]]; then obs+=("Go project")
+elif [[ " ${langs[*]:-} " =~ " rust " ]]; then obs+=("Rust project")
 elif [[ " ${langs[*]:-} " =~ " python " ]]; then
   o="Python project"
   [[ " ${frameworks[*]:-} " =~ " django " ]]  && o="Django project"
@@ -247,8 +251,9 @@ elif [[ " ${langs[*]:-} " =~ " typescript " ]] || [[ " ${langs[*]:-} " =~ " java
   [[ " ${frameworks[*]:-} " =~ " nextjs " ]] && o="Next.js project"
   [[ " ${frameworks[*]:-} " =~ " react " ]] && o="React project"
   obs+=("$o")
-elif [[ " ${langs[*]:-} " =~ " go " ]]; then obs+=("Go project")
-elif [[ " ${langs[*]:-} " =~ " rust " ]]; then obs+=("Rust project")
+elif [[ " ${langs[*]:-} " =~ " swift " ]]; then obs+=("Swift project")
+elif [[ " ${langs[*]:-} " =~ " objc " ]]; then obs+=("Objective-C project")
+elif [[ " ${langs[*]:-} " =~ " c " ]] || [[ " ${langs[*]:-} " =~ " cpp " ]]; then obs+=("C/C++ project")
 elif [ ${#langs[@]} -eq 0 ]; then obs+=("No recognised project structure detected")
 fi
 
