@@ -29,7 +29,7 @@ Save the JSON output mentally. Present the `observations` array to the user as a
 If `detect-context.zsh` reports `"equip_prior": true`, read the prior state:
 
 ```
-Read .omc/state/equip-session.json
+Read .claude/equip-session.json
 ```
 
 ### Step 3: Compute routing signals
@@ -149,7 +149,7 @@ Keep it brief — the references are now in your context. Don't regurgitate them
 
 ### Step 8: Persist state
 
-Ensure the directory exists (`mkdir -p .omc/state`), then write the equipped state to `.omc/state/equip-session.json`:
+Ensure the directory exists (`mkdir -p .claude`), then write the equipped state to `.claude/equip-session.json`:
 
 ```json
 {
@@ -179,7 +179,7 @@ Only after initial equip (not on `resume_keep`):
 
 When `/equip` is called again mid-session:
 1. Run `detect-context.zsh` again (environment may have changed)
-2. Run `plan-equip.zsh` with the new detect output AND prior state file
+2. Run `plan-equip.zsh` with the new detect output AND prior state file (`.claude/equip-session.json`)
 3. If `hash_changed` is false → `resume_keep`
 4. If base packs match but task intent changed → `re_equip` (swap task layer only)
 5. If base changed → full `auto_equip` or `ask` flow

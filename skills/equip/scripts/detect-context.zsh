@@ -215,7 +215,7 @@ fi
 # --- Workflow signals ---
 gsd_active=false;    [ -f .planning/config.json ] && gsd_active=true
 ci_detected=false;   [ -d .github/workflows ] || [ -f .gitlab-ci.yml ] || [ -f Jenkinsfile ] || [ -d .config/azure-pipelines ] || [ -f azure-pipelines.yml ] && ci_detected=true
-equip_prior=false;   [ -f .omc/state/equip-session.json ] && equip_prior=true
+equip_prior=false;   [ -f .claude/equip-session.json ] && equip_prior=true
 
 omc_state="null"
 if [ -d .omc/state ]; then
