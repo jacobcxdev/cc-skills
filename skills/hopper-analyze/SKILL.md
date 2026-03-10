@@ -62,7 +62,7 @@ The script auto-detects binary format and architecture via `file`/`lipo`, builds
 
 ### 2. Query via Hopper MCP
 
-The script blocks until analysis completes (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion. **Do not set a `timeout` parameter on the Bash call** — the script manages its own timeout internally.
+The script always uses `-Y` to pass a per-job Python notification script that writes a sentinel file on analysis completion and auto-saves the `.hop` document. It blocks until the sentinel appears (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion. **Do not set a `timeout` parameter on the Bash call** — the script manages its own timeout internally.
 
 Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`. If ToolSearch returns no Hopper MCP tools, **stop and ask the user to reconnect the Hopper MCP server** — do not fall back to other tools or attempt to read Hopper data by other means. Then:
 
@@ -82,8 +82,7 @@ Do not attempt to query Hopper MCP after an XPC failure without completing all t
 
 ## Known limitations
 
-- **Single-instance XPC**: HopperMCPServer connects to Hopper via XPC, which breaks with multiple instances. If one instance is already running, the script reuses it (warm launch). If multiple instances are detected, all are quit first. Unsaved work triggers a save dialog.
-- **Warm launch**: When reusing an existing Hopper instance, the `-Y` notification script cannot fire (requires cold launch). The script exits immediately after opening the binary — poll `list_documents` via MCP to detect when analysis completes. Auto-save is unavailable on warm launch.
+- **Single-instance XPC**: HopperMCPServer connects to Hopper via XPC, which breaks with multiple instances. If multiple instances are detected, all are quit first. Unsaved work triggers a save dialog.
 - **FAT dialog bypass**: Without `-l FAT --aarch64 -l Mach-O` (or equivalent), Hopper shows a slice-picker dialog that blocks analysis. The script handles this automatically.
 - **No `open_document` in MCP**: Hopper MCP only queries already-opened documents. This skill bridges the gap by automating the CLI launch.
 - **Large binaries**: Analysis of large frameworks (e.g. UIKitCore at 72MB) can take several minutes. The sentinel fires only after analysis completes.

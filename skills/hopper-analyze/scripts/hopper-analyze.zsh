@@ -344,15 +344,12 @@ generate_notify_script "$NOTIFY_SCRIPT" "$SENTINEL" "$SAVE_PATH"
 
 # --- Check existing Hopper instances ---
 HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
-WARM_LAUNCH=false
 
 if [[ "$HOPPER_COUNT" -gt 1 ]]; then
     # Multiple instances — XPC routing breaks, must quit all
     echo "Multiple Hopper instances detected ($HOPPER_COUNT) — quitting all for clean XPC state..."
     quit_hopper
 elif [[ "$HOPPER_COUNT" -eq 1 ]]; then
-    # Single instance already running — reuse it (warm launch)
-    WARM_LAUNCH=true
     echo "Hopper already running — opening binary in existing instance."
 fi
 
@@ -364,29 +361,15 @@ if [[ -n "$SAVE_PATH" ]]; then
     echo "  Save to:  $SAVE_PATH"
 fi
 
-if [[ "$WARM_LAUNCH" == true ]]; then
-    # Warm launch: open in existing instance — -Y requires cold launch, so skip sentinel.
-    # Loader flags still needed for FAT slice selection.
-    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY"
-    echo ""
-    echo "Binary opened in existing Hopper instance. Analysis is running."
-    echo "Poll Hopper MCP list_documents to check when the new document appears."
-    if [[ -n "$SAVE_PATH" ]]; then
-        echo "Auto-save unavailable on warm launch. Save manually or via MCP if needed."
-    fi
-    rm -f "$NOTIFY_SCRIPT"
-else
-    # Cold launch: use -Y notification script + sentinel wait
-    rm -f "$SENTINEL"
-    hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
+rm -f "$SENTINEL"
+hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
-    # Timeout scales with binary size
-    BINARY_SIZE=$(stat -f%z "$BINARY")
-    SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
-    TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
-    wait_for_sentinel "$SENTINEL" "$TIMEOUT" "analysis (${SIZE_MB}MB)"
-    rm -f "$SENTINEL" "$NOTIFY_SCRIPT"
+# Timeout scales with binary size
+BINARY_SIZE=$(stat -f%z "$BINARY")
+SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
+TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
+wait_for_sentinel "$SENTINEL" "$TIMEOUT" "analysis (${SIZE_MB}MB)"
+rm -f "$SENTINEL" "$NOTIFY_SCRIPT"
 
-    echo ""
-    echo "Analysis complete. Query via Hopper MCP tools."
-fi
+echo ""
+echo "Analysis complete. Query via Hopper MCP tools."
