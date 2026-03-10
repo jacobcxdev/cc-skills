@@ -47,10 +47,15 @@ has_file '*.tsx'    && [[ ! " ${langs[*]:-} " =~ " typescript " ]] && langs+=(ty
 has_file '*.js'     && langs+=(javascript)
 has_file '*.jsx'    && [[ ! " ${langs[*]:-} " =~ " javascript " ]] && langs+=(javascript)
 has_file '*.rs'     && langs+=(rust)
-has_file '*.java'   && langs+=(java)
+has_file '*.java' 5 && langs+=(java)
 has_file '*.cpp' || has_file '*.cc' && langs+=(cpp)
 has_file '*.c' 2    && langs+=(c)
 has_file '*.m' 3    && langs+=(objc)
+has_file '*.cs'  3  && langs+=(csharp)
+has_file '*.kt'  3  && langs+=(kotlin)
+has_file '*.dart' 3 && langs+=(dart)
+has_file '*.rb'  2  && langs+=(ruby)
+has_file '*.sh'  4 || has_file '*.zsh' 4 && langs+=(shell)
 
 # --- Frameworks ---
 frameworks=()
@@ -86,6 +91,12 @@ rg -q 'flask'   pyproject.toml requirements.txt setup.py 2>/dev/null && framewor
 rg -q 'gin-gonic' go.mod 2>/dev/null && frameworks+=(gin)
 # Rust
 rg -q 'actix-web|axum|rocket' Cargo.toml 2>/dev/null && frameworks+=(rust-web)
+# Kotlin/Android
+has_file 'AndroidManifest.xml' 4 && frameworks+=(android)
+# .NET
+has_file '*.sln' 2 || has_file '*.csproj' 3 && frameworks+=(dotnet)
+# Dart/Flutter
+[ -f pubspec.yaml ] && rg -q 'flutter' pubspec.yaml 2>/dev/null && frameworks+=(flutter)
 # PFW (Point-Free)
 pfw_pkgs=()
 if [[ " ${langs[*]:-} " =~ " swift " ]] && [ -f Package.swift ]; then
@@ -112,6 +123,11 @@ if [[ " ${langs[*]:-} " =~ " swift " ]] && [ -f Package.swift ]; then
     done
   fi
 fi
+# Android: source files are deeply nested (app/src/main/java/…); search deeper only if needed
+if [[ " ${frameworks[*]:-} " =~ " android " ]]; then
+  [[ ! " ${langs[*]:-} " =~ " kotlin " ]] && has_file '*.kt'   10 && langs+=(kotlin)
+  [[ ! " ${langs[*]:-} " =~ " java "   ]] && has_file '*.java' 10 && langs+=(java)
+fi
 
 # --- Platforms ---
 platforms=()
@@ -126,6 +142,7 @@ if [[ " ${frameworks[*]:-} " =~ " xcode " ]] || [[ " ${langs[*]:-} " =~ " swift 
   [ ${#platforms[@]} -eq 0 ] && [[ " ${frameworks[*]:-} " =~ " xcode " ]] && platforms+=(ios)
 fi
 [ -f Dockerfile ] && platforms+=(docker)
+[[ " ${frameworks[*]:-} " =~ " android " ]] && platforms+=(android)
 
 # --- Workflow tools ---
 wf_tools=()
@@ -137,6 +154,10 @@ wf_tools=()
 [ -f Cargo.toml ]     && wf_tools+=(cargo)
 [ -f go.mod ]         && wf_tools+=(go-mod)
 [ -f package.json ]   && wf_tools+=(npm)
+[ -f Gemfile ]        && wf_tools+=(bundler)
+[ -f pubspec.yaml ]   && wf_tools+=(pub)
+has_file 'build.gradle' 2 || has_file 'build.gradle.kts' 2 && wf_tools+=(gradle)
+[ -d .config/azure-pipelines ] || [ -f azure-pipelines.yml ] && wf_tools+=(azure-pipelines)
 
 # --- Git state ---
 is_repo=false
@@ -193,7 +214,7 @@ fi
 
 # --- Workflow signals ---
 gsd_active=false;    [ -f .planning/config.json ] && gsd_active=true
-ci_detected=false;   [ -d .github/workflows ] || [ -f .gitlab-ci.yml ] || [ -f Jenkinsfile ] && ci_detected=true
+ci_detected=false;   [ -d .github/workflows ] || [ -f .gitlab-ci.yml ] || [ -f Jenkinsfile ] || [ -d .config/azure-pipelines ] || [ -f azure-pipelines.yml ] && ci_detected=true
 equip_prior=false;   [ -f .omc/state/equip-session.json ] && equip_prior=true
 
 omc_state="null"
@@ -214,6 +235,9 @@ test_cmd="null" build_cmd="null"
 [ -f package.json ] && rg -q '"build"' package.json 2>/dev/null && build_cmd='"npm run build"'
 [ -f go.mod ]       && build_cmd='"go build ./..."'
 [ -f Cargo.toml ]   && build_cmd='"cargo build"'
+[ -f pubspec.yaml ]       && test_cmd='"flutter test"'  && build_cmd='"flutter build"'
+has_file 'build.gradle' 2 && test_cmd='"./gradlew test"' && build_cmd='"./gradlew build"'
+has_file '*.sln' 2        && test_cmd='"dotnet test"'   && build_cmd='"dotnet build"'
 
 # --- Risks ---
 large_diff=false
@@ -254,6 +278,20 @@ elif [[ " ${langs[*]:-} " =~ " typescript " ]] || [[ " ${langs[*]:-} " =~ " java
 elif [[ " ${langs[*]:-} " =~ " swift " ]]; then obs+=("Swift project")
 elif [[ " ${langs[*]:-} " =~ " objc " ]]; then obs+=("Objective-C project")
 elif [[ " ${langs[*]:-} " =~ " c " ]] || [[ " ${langs[*]:-} " =~ " cpp " ]]; then obs+=("C/C++ project")
+elif [[ " ${langs[*]:-} " =~ " kotlin " ]]; then
+  o="Kotlin project"
+  [[ " ${frameworks[*]:-} " =~ " android " ]] && o="Android project"
+  obs+=("$o")
+elif [[ " ${langs[*]:-} " =~ " dart " ]]; then
+  o="Dart project"
+  [[ " ${frameworks[*]:-} " =~ " flutter " ]] && o="Flutter project"
+  obs+=("$o")
+elif [[ " ${langs[*]:-} " =~ " csharp " ]]; then
+  o="C# project"
+  [[ " ${frameworks[*]:-} " =~ " dotnet " ]] && o=".NET project"
+  obs+=("$o")
+elif [[ " ${langs[*]:-} " =~ " ruby " ]]; then obs+=("Ruby project")
+elif [[ " ${langs[*]:-} " =~ " shell " ]]; then obs+=("Shell project")
 elif [ ${#langs[@]} -eq 0 ]; then obs+=("No recognised project structure detected")
 fi
 
