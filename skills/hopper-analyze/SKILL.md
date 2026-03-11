@@ -16,6 +16,24 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 
 **IMPORTANT:** Run the script for EVERY binary you want to open — it manages the full lifecycle (quit existing instance → open existing .hop or detect architecture → launch → analyse → save). Never skip the script or try to use Hopper MCP tools without running it first.
 
+### 0. Check for existing Hopper documents
+
+Before locating or passing a binary, search `HOPPER_ANALYZE_DIR` for pre-existing `.hop` files that match the target. This is faster than finding the binary, computing the hash, and having the script discover the dedup hit itself.
+
+Resolve `HOPPER_ANALYZE_DIR` by reading `~/.config/hopper-analyze/config` (shell-sourceable), falling back to `/tmp/hopper` if absent or unset.
+
+```zsh
+# Substitute <binary-name> with the basename you're targeting (e.g. UIKitCore, SpringBoard)
+find "${HOPPER_ANALYZE_DIR}/<binary-name>" -name "*.hop" 2>/dev/null | sort
+```
+
+**If matching `.hop` files are found**, pick the most appropriate one:
+- Prefer an exact `--version` match (version appears as the subdirectory name, e.g. `UIKitCore/23D8133/*.hop`)
+- If multiple versions exist and no version was specified, show the list and ask the user which to open
+- Pass the chosen `.hop` path directly to the script (step 1) — the script will open it and block until loaded
+
+**If no `.hop` files are found**, proceed to step 1 with the binary path as normal.
+
 ### 1. Launch analysis
 
 ```zsh
