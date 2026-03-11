@@ -7,6 +7,49 @@ set -euo pipefail
 CWD="${1:-.}"
 cd "$CWD" 2>/dev/null || cd .
 
+# --- Fast-exit guard ---
+# Marker-first: check for project indicators (cheap stats), then blocklist if none found.
+_has_marker=false
+[ -d .git ] && _has_marker=true
+if ! $_has_marker; then
+  for _f in Package.swift package.json go.mod Cargo.toml pyproject.toml setup.py \
+            Makefile CMakeLists.txt pubspec.yaml Gemfile build.gradle build.gradle.kts; do
+    [ -f "$_f" ] && { _has_marker=true; break; }
+  done
+fi
+if ! $_has_marker; then
+  local _xc=(*.xcodeproj(N/) *.xcworkspace(N/) *.sln(N))
+  [[ ${#_xc[@]} -gt 0 ]] && _has_marker=true
+fi
+
+if ! $_has_marker; then
+  # Resolve physical paths to handle macOS symlinks (/tmp → /private/tmp, etc.)
+  _cwd_real="$(pwd -P)"
+  _home_real="$(cd "$HOME" && pwd -P)"
+  _skip=false
+
+  # Exact home directory
+  [[ "$_cwd_real" == "$_home_real" ]] && _skip=true
+  # Known non-project subdirectories of home
+  if ! $_skip; then
+    for _prefix in Documents Downloads Desktop Library Pictures Music Movies; do
+      [[ "$_cwd_real" == "$_home_real/$_prefix"* ]] && { _skip=true; break; }
+    done
+  fi
+  # Temp directories (physical paths on macOS)
+  [[ "$_cwd_real" == /private/tmp* || "$_cwd_real" == /private/var/tmp* ]] && _skip=true
+
+  if $_skip; then
+    cat <<'ENDJSON'
+{
+  "fast_exit": true,
+  "observations": ["No project context detected. Fast-exit from non-project directory."]
+}
+ENDJSON
+    exit 0
+  fi
+fi
+
 # --- Helpers ---
 json_arr() {
   # Usage: json_arr "a" "b" "c" → ["a","b","c"]

@@ -12,6 +12,19 @@ description: >
 
 Load the right guidance for the right work. Detect → Infer → Load → Go.
 
+<SUBAGENT-STOP>
+If you were dispatched as a subagent (spawned via Task()), skip the equip protocol
+entirely. Return immediately with no output.
+</SUBAGENT-STOP>
+
+## Invocation modes
+
+- **Auto mode** (`--auto` arg): Triggered by SessionStart hook. If detect-context
+  reports `fast_exit: true` or action resolves to `noop`, output one line:
+  "No project context. Equip skipped." and stop. Do not ask questions.
+- **Manual mode** (no `--auto`): User explicitly invoked. Full protocol including
+  `noop` with "What are you working on?" question.
+
 ## Protocol
 
 ### Step 1: Collect environment signals
@@ -23,6 +36,10 @@ zsh ${CLAUDE_SKILL_DIR}/scripts/detect-context.zsh
 ```
 
 Save the JSON output mentally. Present the `observations` array to the user as a brief environment summary.
+
+If the output contains `"fast_exit": true`:
+- **Auto mode:** say "No project context. Equip skipped." and stop.
+- **Manual mode:** proceed to Step 4 (will resolve to `noop`).
 
 ### Step 2: Check for prior equip state
 
@@ -55,7 +72,7 @@ Using the detect output, plan output, and your own interpretation of the signals
 | `ask` | Intent is ambiguous — two plausible tasks, or signals are mixed | Ask ONE disambiguating question with evidence-backed options. |
 | `re_equip` | Prior state exists AND base packs match but task intent changed | Announce: "Switching from [old] to [new]. Base unchanged." Swap task pack. |
 | `drill_down` | After initial equip, you notice a relevant situation pack | Offer: "Also detected [situation]. Load [pack] guidance?" |
-| `noop` | No useful signals (empty dir, no git, no project files) | Ask: "What are you working on?" with task options. |
+| `noop` | No useful signals (empty dir, no git, no project files) | **Auto:** "No project context. Equip skipped." and stop. **Manual:** Ask "What are you working on?" with task options. |
 
 #### Intent scoring heuristics
 

@@ -1,7 +1,7 @@
 {
   "name": "cc-skills",
   "description": "Claude Code skills by JacobCXDev: context-aware tool routing (equip), reverse engineering with Hopper Disassembler, and more.",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "author": {
     "name": "Jacob Clayden",
     "email": "me@jacobcx.dev"
