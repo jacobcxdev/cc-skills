@@ -5,7 +5,7 @@ description: >
   Use when: reverse engineering a binary, disassembling a framework, decompiling procedures,
   examining UIKit/SwiftUI/system framework internals, extracting constants from compiled code,
   or any task requiring Hopper Disassembler. Handles architecture auto-detection for FAT/thin
-  Mach-O, ELF, and PE binaries. Automatically quits existing Hopper instances for clean XPC state.
+  Mach-O, ELF, and PE binaries.
 ---
 
 # Hopper Analyze
@@ -14,7 +14,7 @@ Automate opening binaries in Hopper Disassembler with correct loader flags, then
 
 ## Workflow
 
-**IMPORTANT:** Run the script for EVERY binary you want to open — it manages the full lifecycle (quit existing instance → open existing .hop or detect architecture → launch → analyse → save). Never skip the script or try to use Hopper MCP tools without running it first.
+**IMPORTANT:** Run the script for EVERY binary you want to open — it manages the full lifecycle (open existing .hop or detect architecture → launch → analyse → save). Never skip the script or try to use Hopper MCP tools without running it first.
 
 ### 0. Check for existing Hopper documents
 
@@ -84,13 +84,6 @@ The script always uses `-Y` to pass a per-job Python notification script that wr
 
 Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`. If ToolSearch returns no Hopper MCP tools, **stop and ask the user to reconnect the Hopper MCP server** — do not fall back to other tools or attempt to read Hopper data by other means. Then:
 
-**If MCP tools are present but calls fail** (e.g. XPC connection closed or similar transport error), recover as follows:
-1. Quit all Hopper instances using `osascript -e 'tell application "Hopper Disassembler v4" to quit'`
-2. Tell the user to reconnect the MCP server by running `/mcp` in Claude Code
-3. Once they confirm reconnection, relaunch by running the script again from step 1
-
-Do not attempt to query Hopper MCP after an XPC failure without completing all three steps. Never work around Hopper failures using other tools — always fix the Hopper/MCP connection and retry unless the user explicitly asks for an alternative.
-
 - `list_documents` — verify the document appeared
 - `search_procedures` — find procedures by regex
 - `procedure_pseudo_code` — decompile to C-like pseudocode
@@ -100,7 +93,6 @@ Do not attempt to query Hopper MCP after an XPC failure without completing all t
 
 ## Known limitations
 
-- **Single-instance XPC**: HopperMCPServer connects to Hopper via XPC, which breaks with multiple instances. If multiple instances are detected, all are quit first. Unsaved work triggers a save dialog.
 - **FAT dialog bypass**: Without `-l FAT --aarch64 -l Mach-O` (or equivalent), Hopper shows a slice-picker dialog that blocks analysis. The script handles this automatically.
 - **No `open_document` in MCP**: Hopper MCP only queries already-opened documents. This skill bridges the gap by automating the CLI launch.
 - **Large binaries**: Analysis of large frameworks (e.g. UIKitCore at 72MB) can take several minutes. The sentinel fires only after analysis completes.

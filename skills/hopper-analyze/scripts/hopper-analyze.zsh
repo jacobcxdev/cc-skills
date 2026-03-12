@@ -9,7 +9,7 @@
 #   2. Builds correct Hopper CLI flags
 #   3. Generates a per-job Python notify script
 #   4. Launches Hopper with analysis + ObjC metadata + notification
-#   5. Waits for sentinel (cold launch) or exits immediately (warm launch)
+#   5. Waits for sentinel
 #
 # Configuration:
 #   HOPPER_ANALYZE_DIR env var sets the base save directory.
@@ -31,22 +31,6 @@
 set -euo pipefail
 
 # --- Helpers ---
-
-quit_hopper() {
-    osascript -e 'tell application "Hopper Disassembler" to quit' 2>/dev/null || true
-    local i
-    for i in {1..20}; do
-        pgrep -x "Hopper Disassembler" >/dev/null 2>&1 || break
-        sleep 0.5
-    done
-    if pgrep -x "Hopper Disassembler" >/dev/null 2>&1; then
-        echo "Hopper has unsaved work — save or discard in the Hopper dialog to continue."
-        while pgrep -x "Hopper Disassembler" >/dev/null 2>&1; do
-            sleep 1
-        done
-    fi
-    echo "Hopper quit."
-}
 
 escape_for_python() {
     local s="$1"
@@ -94,18 +78,12 @@ PYEOF
 
 # Open a .hop file in Hopper and wait until it is fully loaded.
 # Two-phase detection: (1) window title appears, (2) CPU settles (deserialisation done).
-# Handles multi-instance quit. Args: <hop_path>
+# Args: <hop_path>
 open_hop_document() {
     local hop_path="$1"
     local hop_name hop_size hop_mb hop_timeout elapsed
 
     echo "Opening: $hop_path"
-
-    HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
-    if [[ "$HOPPER_COUNT" -gt 1 ]]; then
-        echo "Multiple Hopper instances detected — quitting all for clean XPC state..."
-        quit_hopper
-    fi
 
     hopper -d "$hop_path"
 
@@ -341,17 +319,6 @@ fi
 
 # --- Generate per-job Python notify script ---
 generate_notify_script "$NOTIFY_SCRIPT" "$SENTINEL" "$SAVE_PATH"
-
-# --- Check existing Hopper instances ---
-HOPPER_COUNT=$(pgrep -cx "Hopper Disassembler" 2>/dev/null || echo 0)
-
-if [[ "$HOPPER_COUNT" -gt 1 ]]; then
-    # Multiple instances — XPC routing breaks, must quit all
-    echo "Multiple Hopper instances detected ($HOPPER_COUNT) — quitting all for clean XPC state..."
-    quit_hopper
-elif [[ "$HOPPER_COUNT" -eq 1 ]]; then
-    echo "Hopper already running — opening binary in existing instance."
-fi
 
 # --- Launch ---
 echo "Launching Hopper..."
