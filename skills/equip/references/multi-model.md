@@ -83,7 +83,7 @@ If ToolSearch returns no results, the MCP server is not configured -- fall back 
 Run before every handoff. Do not delegate to an exhausted provider.
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/cq.zsh --json
+cq --json
 ```
 
 **Example output:**

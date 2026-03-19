@@ -80,7 +80,7 @@ ToolSearch("select:mcp__codex-cli__codex,mcp__gemini-cli__ask-gemini")
 #### Step 2: Check Quota
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/cq.zsh --json
+cq --json
 ```
 
 Skip any provider with `status: "exhausted"`. Proceed with remaining providers.

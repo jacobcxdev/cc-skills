@@ -149,10 +149,10 @@ Read all selected reference files in parallel.
 **Quota check:** When loaded references include `verification.md` or `multi-model.md`, check provider quota before any MCP delegation:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/cq.zsh --json
+cq --json
 ```
 
-Skip providers with `status: "exhausted"`. Requires `jq` and `zsh`.
+Skip providers with `status: "exhausted"`.
 
 ### Step 7: Present guidance
 
