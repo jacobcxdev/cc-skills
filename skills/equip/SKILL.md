@@ -152,6 +152,8 @@ Read all selected reference files in parallel.
 cq --json
 ```
 
+> `cq` must be installed: `brew install jacobcxdev/tap/cq`
+
 Skip providers with `status: "exhausted"`.
 
 ### Step 7: Present guidance
