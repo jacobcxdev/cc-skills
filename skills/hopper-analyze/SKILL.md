@@ -37,10 +37,12 @@ find "${HOPPER_ANALYZE_DIR}/<binary-name>" -name "*.hop" 2>/dev/null | sort
 ### 1. Launch analysis
 
 ```zsh
-zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]
+zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]
 ```
 
 If the input path ends in `.hop`, the script opens it directly in Hopper (skipping architecture detection, deduplication, and analysis) and blocks until the document loads.
+
+If the input is a dyld shared cache, pass `--dsc-image <image>` to load one embedded image non-interactively via Hopper's `DYLD_ONE` loader.
 
 Default save path:
 
@@ -55,8 +57,9 @@ $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<
   ```
 - `--version <ver>` — groups databases by OS/SDK build tag. Falls back to `<hash>` if omitted.
 - `--description <desc>` — human-readable context distinguishing this binary from others with the same version. Optional.
-- `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`). Auto-detected; omitted from filename if unrecognised.
-- `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, etc.). Auto-detected; omitted from filename if unrecognised.
+- `--dsc-image <image>` — required for dyld shared cache inputs. Selects one embedded image non-interactively using `-l DYLD_ONE -s <image>`.
+- `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`, `DYLD_ONE`). Auto-detected; omitted from filename if unrecognised.
+- `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, `arm64e`, etc.). Auto-detected; omitted from filename if unrecognised.
 - `<hash>` — first 12 chars of the binary's SHA-256.
 - **Deduplication**: if a `.hop` matching the same hash exists anywhere under `<binary>/`, the script opens it directly in Hopper (skipping analysis) and blocks until the document loads (timeout: 1 min base + 2s/MB of .hop file).
 
@@ -76,7 +79,9 @@ Use `--save /path/to.hop` to override entirely, or `--no-save` to skip saving.
 
 When the build tag isn't obvious from the path, omit `--version` (defaults to the binary's hash).
 
-The script auto-detects binary format and architecture via `file`/`lipo`, builds the correct Hopper CLI flags (`-l FAT --aarch64 -l Mach-O` for universal ARM64, `-l Mach-O` for thin, etc.), generates a per-job notification script, and launches Hopper with analysis + ObjC metadata enabled.
+For dyld shared caches, `--description` is optional — the script appends `--dsc-image` to the saved `.hop` filename automatically so cache-wide analyses for different images do not collide.
+
+The script auto-detects binary format and architecture via `file`/`lipo`, builds the correct Hopper CLI flags (`-l FAT --aarch64 -l Mach-O` for universal ARM64, `-l Mach-O` for thin, `-l DYLD_ONE -s UIKitCore` for a dyld shared cache image, etc.), generates a per-job notification script, and launches Hopper with analysis + ObjC metadata enabled.
 
 ### 2. Query via Hopper MCP
 
@@ -108,6 +113,31 @@ Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,
 | Host binaries | `/usr/bin/`, `/usr/lib/` |
 
 Use `find /Library/Developer/CoreSimulator/Volumes -name "<framework>" -type f` to locate simulator runtime binaries.
+
+## dyld shared cache locations
+
+For host macOS binaries stored in the dyld shared cache, prefer these cache locations in order:
+
+1. `/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_*`
+2. `/System/Library/dyld/dyld_shared_cache_*`
+
+On newer macOS releases that moved system content into Cryptexes, the active cache is usually under `Preboot/Cryptexes/OS/...`. On older releases, use `/System/Library/dyld/...`.
+
+Examples:
+
+```zsh
+hopper -l DYLD_ONE -s UIKitCore -a -e /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e
+zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e --dsc-image UIKitCore --version $(sw_vers -buildVersion)
+```
+
+To find a cache on the current machine:
+
+```zsh
+ls /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_* 2>/dev/null
+ls /System/Library/dyld/dyld_shared_cache_* 2>/dev/null
+```
+
+When a user asks for a framework or dylib from the host macOS cache, search Cryptex first and fall back to `/System/Library/dyld/` only if Cryptex is absent.
 
 ## Decoding assembly constants
 

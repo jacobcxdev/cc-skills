@@ -143,12 +143,14 @@ SAVE_PATH=""
 NO_SAVE=false
 VERSION=""
 DESCRIPTION=""
+DSC_IMAGE=""
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version) VERSION="$2"; shift 2 ;;
         --description) DESCRIPTION="$2"; shift 2 ;;
+        --dsc-image) DSC_IMAGE="$2"; shift 2 ;;
         --save) SAVE_PATH="$2"; shift 2 ;;
         --no-save) NO_SAVE=true; shift ;;
         --) shift; POSITIONAL+=("$@"); break ;;
@@ -157,7 +159,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BINARY="${POSITIONAL[1]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--save /path/to.hop] [--no-save]}"
+BINARY="${POSITIONAL[1]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]}"
 JOB_ID="$(uuidgen)"
 
 # Resolve binary to absolute path and verify existence
@@ -223,6 +225,9 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
     _SAVE_DIR="${BIN_DIR}/${VERSION}"
     mkdir -p "$_SAVE_DIR"
     _DESCRIPTION="$DESCRIPTION"
+    if [[ -n "$DSC_IMAGE" ]]; then
+        _DESCRIPTION="${_DESCRIPTION:+${_DESCRIPTION}_}${DSC_IMAGE}"
+    fi
     _NEEDS_FINALISE=true
 fi
 
@@ -233,7 +238,22 @@ LOADER_FLAGS=()
 LOADER_TYPE=""
 CPU_TYPE=""
 
-if echo "$FILE_INFO" | grep -q "universal binary"; then
+if echo "$FILE_INFO" | grep -q "Dyld shared cache"; then
+    if [[ -z "$DSC_IMAGE" ]]; then
+        echo "Error: dyld shared cache input requires --dsc-image <image>" >&2
+        exit 1
+    fi
+    LOADER_FLAGS=(-l DYLD_ONE -s "$DSC_IMAGE")
+    LOADER_TYPE="DYLD_ONE"
+    if echo "$FILE_INFO" | grep -q "arm64e"; then
+        CPU_TYPE="arm64e"
+    elif echo "$FILE_INFO" | grep -q "arm64"; then
+        CPU_TYPE="arm64"
+    elif echo "$FILE_INFO" | grep -q "x86_64"; then
+        CPU_TYPE="x86_64"
+    fi
+    echo "Dyld shared cache detected"
+elif echo "$FILE_INFO" | grep -q "universal binary"; then
     # FAT binary — pick best slice
     ARCHS="$(lipo -archs "$BINARY" 2>/dev/null || echo "")"
     LOADER_TYPE="FAT"
