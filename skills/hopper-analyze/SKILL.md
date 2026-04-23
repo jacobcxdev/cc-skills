@@ -57,7 +57,7 @@ $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<
   ```
 - `--version <ver>` — groups databases by OS/SDK build tag. Falls back to `<hash>` if omitted.
 - `--description <desc>` — human-readable context distinguishing this binary from others with the same version. Optional.
-- `--dsc-image <image>` — required for dyld shared cache inputs. Selects one embedded image non-interactively using `-l DYLD_ONE -s <image>`.
+- `--dsc-image <image>` — required for dyld shared cache inputs. Selects one embedded image non-interactively using `-l DYLD_ONE -s <image> -l Mach-O`.
 - `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`, `DYLD_ONE`). Auto-detected; omitted from filename if unrecognised.
 - `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, `arm64e`, etc.). Auto-detected; omitted from filename if unrecognised.
 - `<hash>` — first 12 chars of the binary's SHA-256.
@@ -81,7 +81,7 @@ When the build tag isn't obvious from the path, omit `--version` (defaults to th
 
 For dyld shared caches, `--description` is optional — the script appends `--dsc-image` to the saved `.hop` filename automatically so cache-wide analyses for different images do not collide.
 
-The script auto-detects binary format and architecture via `file`/`lipo`, builds the correct Hopper CLI flags (`-l FAT --aarch64 -l Mach-O` for universal ARM64, `-l Mach-O` for thin, `-l DYLD_ONE -s UIKitCore` for a dyld shared cache image, etc.), generates a per-job notification script, and launches Hopper with analysis + ObjC metadata enabled.
+The script auto-detects binary format and architecture via `file`/`lipo`, builds the correct Hopper CLI flags (`-l FAT --aarch64 -l Mach-O` for universal ARM64, `-l Mach-O` for thin, `-l DYLD_ONE -s UIKitCore -l Mach-O` for a dyld shared cache image, etc.), generates a per-job notification script, and launches Hopper with analysis + ObjC metadata enabled.
 
 ### 2. Query via Hopper MCP
 
@@ -126,7 +126,7 @@ On newer macOS releases that moved system content into Cryptexes, the active cac
 Examples:
 
 ```zsh
-hopper -l DYLD_ONE -s UIKitCore -a -e /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e
+hopper -l DYLD_ONE -s UIKitCore -a -e /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e -l Mach-O
 zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e --dsc-image UIKitCore --version $(sw_vers -buildVersion)
 ```
 

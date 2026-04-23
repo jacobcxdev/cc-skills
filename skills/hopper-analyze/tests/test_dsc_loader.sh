@@ -86,7 +86,7 @@ fi
 
 CMD="$(cat "$HOPPER_CMD_LOG")"
 case "$CMD" in
-  *"-l DYLD_ONE -s UIKitCore -a -e $TEST_BIN -Y /tmp/hopper-notify-test-job.py"*)
+  *"-l DYLD_ONE -s UIKitCore -l Mach-O -a -e $TEST_BIN -Y /tmp/hopper-notify-test-job.py"*)
     ;;
   *)
     printf 'Unexpected Hopper command:\n%s\n' "$CMD" >&2

@@ -243,7 +243,7 @@ if echo "$FILE_INFO" | grep -q "Dyld shared cache"; then
         echo "Error: dyld shared cache input requires --dsc-image <image>" >&2
         exit 1
     fi
-    LOADER_FLAGS=(-l DYLD_ONE -s "$DSC_IMAGE")
+    LOADER_FLAGS=(-l DYLD_ONE -s "$DSC_IMAGE" -l Mach-O)
     LOADER_TYPE="DYLD_ONE"
     if echo "$FILE_INFO" | grep -q "arm64e"; then
         CPU_TYPE="arm64e"
