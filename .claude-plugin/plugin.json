@@ -1,6 +1,6 @@
 {
   "name": "cc-skills",
-  "description": "Claude Code skills by JacobCXDev: reverse engineering with Hopper Disassembler, and more.",
+  "description": "Claude Code skills by JacobCXDev: reverse engineering with Hopper Disassembler, Claude Code session utilities, and more.",
   "version": "1.2.2",
   "author": {
     "name": "Jacob Clayden",
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/jacobcxdev/cc-skills",
   "repository": "https://github.com/jacobcxdev/cc-skills",
   "license": "MIT",
-  "keywords": ["skills", "hopper", "reverse-engineering", "disassembly"]
+  "keywords": ["skills", "hopper", "reverse-engineering", "disassembly", "compact", "clear", "watchdog", "zellij"]
 }

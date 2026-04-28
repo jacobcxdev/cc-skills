@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# cc-clear — Send /clear + optional next command to Claude via zellij
+#
+# Usage:
+#   cc-clear                         # clear only
+#   cc-clear "<next command>"        # clear then continue
+
+set -euo pipefail
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+
+NEXT_CMD="${1:-}"
+
+if [ -z "${ZELLIJ:-}" ]; then
+  echo "ERROR: Not in zellij." >&2
+  exit 1
+fi
+
+INITIAL_DELAY_SECONDS="${CC_WRAPPER_INITIAL_DELAY_SECONDS:-5}"
+SUBMIT_SETTLE_SECONDS="${CC_WRAPPER_SUBMIT_SETTLE_SECONDS:-1}"
+ACK_POLL_INTERVAL_SECONDS="${CC_WRAPPER_ACK_POLL_INTERVAL_SECONDS:-0.2}"
+ACK_MAX_ATTEMPTS="${CC_WRAPPER_ACK_MAX_ATTEMPTS:-100}"
+
+capture_target_pane_id() {
+  zellij action list-panes --json --state | python3 -c '
+import json
+import sys
+
+panes = json.load(sys.stdin)
+focused = next((pane for pane in panes if pane.get("is_focused")), None)
+if focused is None:
+    raise SystemExit("ERROR: Could not determine focused zellij pane.")
+prefix = "plugin" if focused.get("is_plugin") else "terminal"
+print("{}_{}".format(prefix, focused["id"]))
+'
+}
+
+TARGET_PANE_ID="${CC_WRAPPER_TARGET_PANE_ID:-$(capture_target_pane_id)}"
+
+focus_target_pane() {
+  local err_file
+  err_file="$(mktemp)"
+  if ! zellij action focus-pane-id "$TARGET_PANE_ID" 2>"$err_file"; then
+    if ! grep -q 'already focused' "$err_file"; then
+      cat "$err_file" >&2
+      rm -f "$err_file"
+      return 1
+    fi
+  fi
+  rm -f "$err_file"
+}
+
+normalized_occurrence_count() {
+  local needle="$1"
+  local dump_file
+  dump_file="$(mktemp)"
+  zellij action dump-screen -f -p "$TARGET_PANE_ID" --path "$dump_file"
+  python3 - "$needle" "$dump_file" <<'PY'
+import pathlib
+import re
+import sys
+
+needle = re.sub(r"\s+", "", sys.argv[1])
+hay = pathlib.Path(sys.argv[2]).read_text(errors="replace")
+hay = re.sub(r"\s+", "", hay)
+print(hay.count(needle) if needle else 0)
+PY
+  rm -f "$dump_file"
+}
+
+wait_for_submission_ack() {
+  local line="$1"
+  local baseline_count="$2"
+  local current_count
+
+  for ((attempt = 0; attempt < ACK_MAX_ATTEMPTS; attempt++)); do
+    current_count="$(normalized_occurrence_count "$line")"
+    if [ "$current_count" -gt "$baseline_count" ]; then
+      return 0
+    fi
+    sleep "$ACK_POLL_INTERVAL_SECONDS"
+  done
+
+  echo "ERROR: Timed out waiting for submitted text to appear in pane transcript for $TARGET_PANE_ID" >&2
+  echo "Expected line: $line" >&2
+  return 1
+}
+
+send_line() {
+  local line="$1"
+  local baseline_count
+
+  baseline_count="$(normalized_occurrence_count "$line")"
+  focus_target_pane
+  zellij action write-chars "$line"
+  sleep "$SUBMIT_SETTLE_SECONDS"
+  focus_target_pane
+  zellij action write 13
+  wait_for_submission_ack "$line" "$baseline_count"
+}
+
+(
+  sleep "$INITIAL_DELAY_SECONDS"
+  send_line "/clear"
+  if [ -n "$NEXT_CMD" ]; then
+    sleep "$INITIAL_DELAY_SECONDS"
+    send_line "$NEXT_CMD"
+  fi
+) &
+disown
+
+echo "Queued: /clear → ${NEXT_CMD:-<done>}"

@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# cc-watchdog — Prevent stalled Claude Code sessions via Stop hook integration
+#
+# Writes state files to ${XDG_STATE_HOME}/cc-watchdog/ that persistent-mode.mjs
+# reads on every Stop event. When active, the hook blocks premature stops and
+# injects a continuation message — no zellij, tmux, or terminal multiplexer
+# required.
+#
+# Drop-in replacement for the old zellij-polling watchdog. Same API.
+#
+# Usage:
+#   cc-watchdog start [name] [message]   Activate watchdog (default name: "default")
+#   cc-watchdog stop [name]              Deactivate (omit name to clear all)
+#   cc-watchdog status [name]            Check if active
+#   cc-watchdog list                     List active watchdogs
+#
+# The Stop hook in persistent-mode.mjs scans the state dir for any active
+# watchdog matching the current project (by project_path). When found, it
+# blocks the stop and returns the continuation message.
+
+set -euo pipefail
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+
+CMD="${1:?Usage: cc-watchdog \{start|stop|status|list\} [name] [message]}"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/cc-watchdog"
+
+# Sanitise name: strip empty strings, default to "default"
+_name() {
+  local n="${1:-default}"
+  [ -z "$n" ] && n="default"
+  # Replace slashes and special chars for safe filenames
+  echo "$n" | tr '/' '_' | tr -cd 'a-zA-Z0-9_-'
+}
+
+case "$CMD" in
+  start)
+    NAME="$(_name "${2:-}")"
+    MESSAGE="${3:-Continue working. If you were mid-workflow, re-read the workflow TOC and current step file, then proceed from the current step.}"
+    PROJECT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+    mkdir -p "$STATE_DIR"
+    NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cat > "$STATE_DIR/$NAME.json" << EOF
+{
+  "active": true,
+  "name": "$NAME",
+  "message": "$MESSAGE",
+  "project_path": "$PROJECT",
+  "started_at": "$NOW",
+  "last_checked_at": "$NOW",
+  "reinforcement_count": 0
+}
+EOF
+    echo "Watchdog active (name=$NAME, project=$PROJECT)"
+    ;;
+
+  stop)
+    if [ -z "${2:-}" ]; then
+      # No name — clear all state files for current project
+      PROJECT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+      removed=0
+      if [ -d "$STATE_DIR" ]; then
+        for f in "$STATE_DIR"/*.json; do
+          [ -f "$f" ] || continue
+          # Check if this state belongs to current project (grep for project_path)
+          if grep -q "\"project_path\": \"$PROJECT\"" "$f" 2>/dev/null; then
+            rm -f "$f"
+            removed=$((removed + 1))
+          fi
+        done
+      fi
+      echo "Watchdog stopped ($removed cleared for $PROJECT)"
+    else
+      NAME="$(_name "$2")"
+      if [ -f "$STATE_DIR/$NAME.json" ]; then
+        rm -f "$STATE_DIR/$NAME.json"
+        echo "Watchdog stopped (name=$NAME)"
+      else
+        echo "No watchdog active for $NAME"
+      fi
+    fi
+    ;;
+
+  status)
+    NAME="$(_name "${2:-default}")"
+    if [ -f "$STATE_DIR/$NAME.json" ]; then
+      cat "$STATE_DIR/$NAME.json"
+    else
+      echo "No watchdog active for $NAME"
+    fi
+    ;;
+
+  list)
+    found=0
+    if [ -d "$STATE_DIR" ]; then
+      for f in "$STATE_DIR"/*.json; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f" .json)
+        project=$(grep -o '"project_path": "[^"]*"' "$f" 2>/dev/null | cut -d'"' -f4)
+        echo "  $name ($project)"
+        found=$((found + 1))
+      done
+    fi
+    if [ "$found" -eq 0 ]; then echo "No active watchdogs."; fi
+    ;;
+
+  *)
+    echo "Usage: cc-watchdog {start|stop|status|list} [name] [message]" >&2
+    exit 1
+    ;;
+esac
