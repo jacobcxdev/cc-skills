@@ -33,6 +33,7 @@ case "$1" in
       fi
       shift
     done
+    printf 'dump-screen\t%s\n' "$path" >> "$LOG"
     cp "$SCREEN" "$path"
     ;;
   write-chars)
@@ -70,7 +71,7 @@ export CC_WRAPPER_ACK_MAX_ATTEMPTS=1
 
 "$SCRIPT" 'Continue with the current task.' >"$TMPDIR/stdout"
 for _ in {1..50}; do
-  if [[ "$(grep -c '^write' "$TMPDIR/log")" -ge 4 ]]; then
+  if [[ "$(grep -c '^write' "$TMPDIR/log")" -ge 4 && "$(grep -c '^dump-screen' "$TMPDIR/log")" -ge 4 ]]; then
     break
   fi
   /bin/sleep 0.1
