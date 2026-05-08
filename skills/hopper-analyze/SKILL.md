@@ -37,17 +37,17 @@ find "${HOPPER_ANALYZE_DIR}/<binary-name>" -name "*.hop" 2>/dev/null | sort
 ### 1. Launch analysis
 
 ```zsh
-zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh <binary-path|hop-path> [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]
+zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh [<binary-path|hop-path>] [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]
 ```
 
 If the input path ends in `.hop`, the script opens it directly in Hopper (skipping architecture detection, deduplication, and analysis) and blocks until the document loads.
 
-If the input is a dyld shared cache, pass `--dsc-image <image>` to load one embedded image non-interactively via Hopper's `DYLD_ONE` loader.
+If the input is a dyld shared cache, pass `--dsc-image <image>` to load one embedded image non-interactively via Hopper's `DYLD_ONE` loader. If `--dsc-image` is supplied without an input path, the script uses the current host build (`sw_vers -buildVersion`) and finds the active host dyld shared cache automatically.
 
 Default save path:
 
 ```
-$HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<hash>.hop
+$HOPPER_ANALYZE_DIR/<binary-or-dsc-image>/<version>/<binary-or-dsc-image>_<loader>_<cpu>[_<description>]_<hash>.hop
 ```
 
 - `HOPPER_ANALYZE_DIR` — base save directory. Resolved in order: env var → `~/.config/hopper-analyze/config` → `/tmp/hopper`. To persist, create the config file:
@@ -57,7 +57,7 @@ $HOPPER_ANALYZE_DIR/<binary>/<version>/<binary>_<loader>_<cpu>[_<description>]_<
   ```
 - `--version <ver>` — groups databases by OS/SDK build tag. Falls back to `<hash>` if omitted.
 - `--description <desc>` — human-readable context distinguishing this binary from others with the same version. Optional.
-- `--dsc-image <image>` — required for dyld shared cache inputs. Selects one embedded image non-interactively using `-l DYLD_ONE -s <image> -l Mach-O`.
+- `--dsc-image <image>` — required for dyld shared cache inputs. Selects one embedded image non-interactively using `-l DYLD_ONE -s <image> -l Mach-O`, and becomes the save directory/basename for the default `.hop` path.
 - `<loader>` — binary format (`Mach-O`, `FAT`, `ELF`, `WinPE`, `DYLD_ONE`). Auto-detected; omitted from filename if unrecognised.
 - `<cpu>` — Hopper CPU family (`aarch64`, `x86_64`, `armv7`, `arm64e`, etc.). Auto-detected; omitted from filename if unrecognised.
 - `<hash>` — first 12 chars of the binary's SHA-256.
@@ -79,13 +79,13 @@ Use `--save /path/to.hop` to override entirely, or `--no-save` to skip saving.
 
 When the build tag isn't obvious from the path, omit `--version` (defaults to the binary's hash).
 
-For dyld shared caches, `--description` is optional — the script appends `--dsc-image` to the saved `.hop` filename automatically so cache-wide analyses for different images do not collide.
+For dyld shared caches, `--description` is optional — `--dsc-image` is used as the logical binary name, so different embedded images save under separate directories and filenames.
 
 The script auto-detects binary format and architecture via `file`/`lipo`, builds the correct Hopper CLI flags (`-l FAT --aarch64 -l Mach-O` for universal ARM64, `-l Mach-O` for thin, `-l DYLD_ONE -s UIKitCore -l Mach-O` for a dyld shared cache image, etc.), generates a per-job notification script, and launches Hopper with analysis + ObjC metadata enabled.
 
 ### 2. Query via Hopper MCP
 
-The script always uses `-Y` to pass a per-job Python notification script that writes a sentinel file on analysis completion and auto-saves the `.hop` document. It blocks until the sentinel appears (timeout scales with binary size: 2 min base + 10s/MB), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion. **Do not set a `timeout` parameter on the Bash call** — the script manages its own timeout internally.
+The script always uses `-Y` to pass a per-job Python notification script that writes a sentinel file on analysis completion and auto-saves the `.hop` document. It blocks until the sentinel appears (timeout scales with estimated analysis size: 2 min base + 10s/MB, with a 180MB minimum for `DYLD_ONE` cache images), then exits. Run it with `Bash(run_in_background: true)` so Claude Code is notified on completion. **Do not set a `timeout` parameter on the Bash call** — the script manages its own timeout internally.
 
 Load MCP tools with `ToolSearch("select:mcp__HopperMCPServer__search_procedures,mcp__HopperMCPServer__list_documents")`. If ToolSearch returns no Hopper MCP tools, **stop and ask the user to reconnect the Hopper MCP server** — do not fall back to other tools or attempt to read Hopper data by other means. Then:
 
@@ -127,6 +127,7 @@ Examples:
 
 ```zsh
 hopper -l DYLD_ONE -s UIKitCore -a -e /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e -l Mach-O
+zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh --dsc-image UIKitCore
 zsh ${CLAUDE_SKILL_DIR}/scripts/hopper-analyze.zsh /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e --dsc-image UIKitCore --version $(sw_vers -buildVersion)
 ```
 

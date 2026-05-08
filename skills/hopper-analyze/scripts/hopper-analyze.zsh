@@ -39,6 +39,32 @@ escape_for_python() {
     printf '%s' "$s"
 }
 
+estimate_analysis_size_mb() {
+    local binary="$1" loader_type="$2" dsc_image="$3"
+    local binary_size size_mb image_size
+
+    binary_size=$(stat -f%z "$binary")
+    size_mb=$(( (binary_size + 1048575) / 1048576 ))
+
+    if [[ "$loader_type" == "DYLD_ONE" && "$size_mb" -lt 180 ]]; then
+        size_mb=180
+    fi
+
+    printf '%s' "$size_mb"
+}
+
+resolve_host_dsc() {
+    local cache
+
+    for cache in /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_* /System/Library/dyld/dyld_shared_cache_*; do
+        [[ -f "$cache" ]] || continue
+        printf '%s' "$cache"
+        return 0
+    done
+
+    return 1
+}
+
 # Wait for sentinel file with timeout. Args: <sentinel> <timeout_seconds> <label>
 wait_for_sentinel() {
     local sentinel="$1" timeout="$2" label="$3"
@@ -159,7 +185,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BINARY="${POSITIONAL[1]:?Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]}"
+BINARY="${POSITIONAL[1]:-}"
+if [[ -z "$BINARY" ]]; then
+    if [[ -z "$DSC_IMAGE" ]]; then
+        echo "Usage: hopper-analyze <binary-path|hop-path> [--version <ver>] [--description <desc>] [--dsc-image <image>] [--save /path/to.hop] [--no-save]" >&2
+        exit 1
+    fi
+    BINARY="$(resolve_host_dsc)" || {
+        echo "Error: Could not find host dyld shared cache" >&2
+        exit 1
+    }
+fi
 JOB_ID="$(uuidgen)"
 
 # Resolve binary to absolute path and verify existence
@@ -168,6 +204,10 @@ BINARY="$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")"
 if [[ ! -f "$BINARY" ]]; then
     echo "Error: Binary not found: $BINARY" >&2
     exit 1
+fi
+
+if [[ -n "$DSC_IMAGE" && -z "$VERSION" ]]; then
+    VERSION="$(sw_vers -buildVersion)"
 fi
 
 # --- Direct .hop file input ---
@@ -203,7 +243,7 @@ fi
 _NEEDS_FINALISE=false
 if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
     BASE_DIR="${HOPPER_ANALYZE_DIR:-/tmp/hopper}"
-    _BIN_NAME="$(basename "$BINARY")"
+    _BIN_NAME="${DSC_IMAGE:-$(basename "$BINARY")}"
     _BIN_HASH="$(shasum -a 256 "$BINARY" | cut -c1-12)"
 
     # Dedup: search entire <binary>/ tree for this hash (any version subdir)
@@ -225,9 +265,6 @@ if [[ "$NO_SAVE" == false && -z "$SAVE_PATH" ]]; then
     _SAVE_DIR="${BIN_DIR}/${VERSION}"
     mkdir -p "$_SAVE_DIR"
     _DESCRIPTION="$DESCRIPTION"
-    if [[ -n "$DSC_IMAGE" ]]; then
-        _DESCRIPTION="${_DESCRIPTION:+${_DESCRIPTION}_}${DSC_IMAGE}"
-    fi
     _NEEDS_FINALISE=true
 fi
 
@@ -351,9 +388,8 @@ fi
 rm -f "$SENTINEL"
 hopper "${LOADER_FLAGS[@]}" -a -e "$BINARY" -Y "$NOTIFY_SCRIPT"
 
-# Timeout scales with binary size
-BINARY_SIZE=$(stat -f%z "$BINARY")
-SIZE_MB=$(( (BINARY_SIZE + 1048575) / 1048576 ))
+# Timeout scales with estimated analysis size
+SIZE_MB=$(estimate_analysis_size_mb "$BINARY" "$LOADER_TYPE" "$DSC_IMAGE")
 TIMEOUT=$(( 120 + SIZE_MB * 10 ))  # 2 min base + 10s per MB
 wait_for_sentinel "$SENTINEL" "$TIMEOUT" "analysis (${SIZE_MB}MB)"
 rm -f "$SENTINEL" "$NOTIFY_SCRIPT"

@@ -1,7 +1,7 @@
 {
   "name": "cc-skills",
   "description": "Claude Code skills by JacobCXDev: reverse engineering with Hopper Disassembler, Claude Code session utilities, and more.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": {
     "name": "Jacob Clayden",
     "email": "me@jacobcx.dev"
